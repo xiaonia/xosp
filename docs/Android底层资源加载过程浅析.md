@@ -244,7 +244,9 @@ __idmap是根据新旧资源(overlay)生成的id映射表__：_详情可参考 l
 
 * 在加载新资源的时候，通过这个表可以将新资源的entryList加载到旧资源对应的typeIndex上，因为上层代码使用的是旧资源的resId，需要根据旧资源的packageId和typeId查找。
 
-* 而在查找资源的时候，通过这个表可以找到新资源的entryIndex。IdmapEntries的结构是__“稀疏列表”__：即开头不存在的映射数保存为entryOffset，中间不存在的映射填充空值(或0xffffffff)，尾端不存在的映射不保存，可以通过entryOffset + entryCount的范围进行判断。
+* 而在查找资源的时候，通过这个表可以找到新资源的entryIndex。IdmapEntries的结构是__“稀疏列表”__：即开头不存在的映射数保存为entryOffset，中间不存在的映射填充NO_ENTRY(0xffffffff)，尾端不存在的映射不保存，可以通过entryOffset + entryCount的范围进行判断。
+
+* Android5.0以下的系统会根据新旧资源文件生成idmap，而在Android5.0及以上系统，则将这部分逻辑移除，idmap文件需要根据命令行生成。[Runtime resource overlay](https://android.googlesource.com/platform/frameworks/base/+/48d22323ce39f9aab003dce74456889b6414af55)
 
 
 
@@ -416,7 +418,7 @@ t->configs.add(type);
 ```
 紧接着依然是校验entryCount是不是一致。注意这里拿到的Type对象是上一步RES_TABLE_TYPE_SPEC_TYPE时创建的，因此理论上来说不会存在entryCount不一致的问题，如果存在则说明resource文件有问题，因此此处直接中断并退出解析。
 
-entryCount校验一致之后，就将ResTable_type资源数据添加到 t->configs，__t->configs 存储的是同一typeId的资源，即针对不同版本、系统或者分辨率的适配资源。资源查找的时候，就是通过循环遍历这个列表，找到最适合的资源。__
+entryCount校验一致之后，就将ResTable_type资源数据添加到 t->configs，__t->configs 存储的是同一typeId不同维度的资源，即针对不同版本、系统或者分辨率的适配资源。资源查找的时候，就是通过循环遍历这个列表，找到最适合的资源。__
 
 
 
@@ -495,4 +497,17 @@ Android5.0系统为了支持__splits apk__的功能，修改了资源加载的�
 #### Android5.0 WebView(跨应用加载代码和资源)的加载过程
 
 未完待续
+
+
+
+#### " aapt -I " 命令 ( -I  add an existing package to base include set )
+
+未完待续
+
+#### xml文件引用系统资源，如  “@android:dimen/app_icon_size” 
+
+因为__Android系统资源的ID是固定的__，因此，当我们在xml文件里引用系统资源时，aapt会直接将其转换成系统资源的ID，如 _“@android:dimen/app_icon_size”_ 转换成 _“ @ref/0x01050000”_ 。
+
+
+
 
