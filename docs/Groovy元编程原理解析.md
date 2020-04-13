@@ -268,11 +268,13 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
 }
 ```
 
-首先，__通过调用 _getMetaMethod()_ 方法查找目标类及其父类是否存在该方法__:
+首先，__通过调用 _getMetaMethod()_ 方法查找目标类及其父类是否存在该方法（包括参数类型兼容的方法）__:
 
-* 如果调用的是this方法，则会__查找目标类及其父类的this方法(包括继承和覆盖的方法)、通过Category注入的方法以及通过MetaClass(ExpandoMetaClass)注入的方法__，如果同时存在则 _优先调用通过Category注入且是_覆盖_的方法_
+* 如果调用的是GeneratedClosure的 _call ( )_ 方法，则会转换成查找 _doCall ( )_ 方法.
 
-* 如果调用的是super方法，则只会查找其父类的super方法
+* 如果调用的是this方法，则__调用优先级依次为 1.目标类及其父类通过Category注入的方法、2.目标类及其父类通过MetaClass(ExpandoMetaClass)注入的方法、3.目标类及其父类定义的方法。同时遵循定义在子类的方法优先于(覆盖)定义在父类的方法的原则。__
+
+* 如果调用的是super方法，则只会查找调用其父类通过MetaClass(ExpandoMetaClass)注入的方法以及其父类的方法。（调用super方法的时候，如果父类不存在该方法，则依然会走invokePropertyOrMissing方法(子类property优先)）。
 
 * 如果未找到相关方法并且方法参数只有一个List类型的参数，则会尝试展开该List并再次通过上面的逻辑进行查找。
 
@@ -322,9 +324,9 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
 ```
 invokePropertyOrMissing方法的调用过程：
 
-* __查找是否存在以该方法名命名的Property，如果存在且该Property为Closure类型，则调用该Closure__。 需要注意的是：这里并不是通过MetaClass注入方法的实现逻辑，通过MetaClass注入的方法不会以Property的形式存在，而是以ClosureMetaMethod类型的数据缓存到目标类的方法信息中。
+* __查找目标类及其父类是否存在以该方法名命名的Property，如果存在且该Property为Closure类型，则调用该Closure__。 需要注意的是：这里并不是通过MetaClass注入方法的实现逻辑，通过MetaClass注入的方法不会以Property的形式存在，而是以ClosureMetaMethod类型的数据缓存到目标类的方法信息中。
 
-* 如果未找到相关Property，且目标对象是Script类型，则尝试查找是否存在以该方法名命名的BindingVariable，如果存在则调用其 call( ) 方法。
+* 如果未找到相关Property，且目标对象是Script类型，则尝试查找是否存在以该方法名命名的BindingVariable，如果存在则调用其 call ( ) 方法。
 
 * 如果以上尝试均失败了，则调用 invokeMissingMethod() 方法
 
@@ -394,17 +396,19 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
 }
 ```
 
-invokeMissingMethod方法的调用过程：
+invokeMissingMethod方法的调用过程如下，__如果调用的是this方法，则：__
 
 * __查找是否存在通过MixIn注入的方法，如果存在则调用该方法。__
 
-* 查找目标类及其父类是否存在符合条件的SubClassMethod~~或者参数类型兼容的~~方法（如果存在多个，则返回匹配度最高的），如果存在则调用方法。_SubClassMethod是定义在目标类或者实例范围内的动态方法，其作用域仅限于目标类或实例_。
+* 查找目标类及其父类是否存在符合条件的SubClassMethod方法（如果存在多个，则返回匹配度最高的），如果存在则调用方法。__SubClassMethod是定义在目标类或者实例范围内的动态方法，其作用域仅限于目标类或实例__。
 
-* 查找目标类及其父类中是否存在方法名为 _invokeMethod_ 的SubClassMethod或者参数类型兼容的方法（如果存在多个，则返回匹配度最高的），且该方法是 _ClosureMetaMethod_ 类型（即通过MetaClass注入的拦截方法，如果存在则调用该方法。
+* 查找目标类及其父类中是否存在方法名为 __invokeMethod__ 的SubClassMethod方法（如果存在多个，则返回匹配度最高的），且该方法是 _ClosureMetaMethod_ 类型（即通过MetaClass注入的拦截方法，如果存在则调用该方法。
 
-* 如果通过以上逻辑还是查找不到任何我们要调用的方法信息，那么就会__尝试调用  _methodMissing_ 方法__。_这里会优先调用通过Category注入的 _methodMissing_ 方法，如果未找到才调用目标对象或者通过MetaClass注入的 _methodMissing_ 方法_
+* 如果通过以上逻辑还是查找不到任何我们要调用的方法信息，那么就会__尝试调用  _methodMissing_ 方法__。__这里会优先调用通过Category注入的 _methodMissing_ 方法，如果未找到才调用目标对象或者通过MetaClass注入的 _methodMissing_ 方法__
 
-* 最后，__如果 _methodMissing_ 方法也不存在，就抛出MissingMethodException异常__
+* 以上几步均是针对this方法的处理逻辑，__如果调用的是super方法，那么会直接尝试调用目标对象定义的或者通过MetaClass注入的 _methodMissing_ 方法__
+
+最后，__如果 _methodMissing_ 方法也不存在，就抛出MissingMethodException异常__
 
 至此，我们已经完整的走完了一次方法查找和分发的流程，也看到了Category和MixIn注入的方法是如何被调用到的。那么Groovy又是如何管理MetaClass的呢？
 
