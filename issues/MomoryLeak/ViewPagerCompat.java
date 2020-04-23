@@ -21,7 +21,7 @@ public class ViewPagerCompat extends ViewPager {
 
     private static final String TAG = "ViewPagerCompat";
 
-    private static final boolean TRICK_ENABLED = true;
+    private static final boolean TRICK_ENABLED = false;
 
     private static final int PFLAG2_VIEW_QUICK_REJECTED_COPY = 0x10000000; //View.PFLAG2_VIEW_QUICK_REJECTED
 
@@ -45,8 +45,9 @@ public class ViewPagerCompat extends ViewPager {
         }
 
         if (Build.VERSION.SDK_INT >= LOLLIPOP && Build.VERSION.SDK_INT <= MARSHMALLOW
-                && isHardwareAccelerated() && canvas.isHardwareAccelerated()
-                && isViewQuickRejected(child)) {
+                && canvas.isHardwareAccelerated() && child.isHardwareAccelerated()
+                && isViewQuickRejected(child)
+        ) {
             resetDisplayList(child);
         }
 
