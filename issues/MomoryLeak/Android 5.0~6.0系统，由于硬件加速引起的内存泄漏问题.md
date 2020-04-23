@@ -1,5 +1,8 @@
 ###                       Android 5.0~6.0系统，由于硬件加速引起的内存泄漏问题
 
+### 实例
+
+![图001](./mml_hardwareaccelerate.png)
 
 ####  原因
 
