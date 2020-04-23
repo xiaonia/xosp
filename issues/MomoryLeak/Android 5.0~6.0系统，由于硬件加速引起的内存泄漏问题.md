@@ -204,9 +204,21 @@ void RenderNode::setStagingDisplayList(DisplayList* displayList) {
 ```
 我们看到，其核心也是在 _setStagingDisplayLis()_ 方法增加了判断及清除 _mDisplayListData_ 的逻辑。
 
+附其他相关commit链接：
+
 [Fix some edge cases](https://android.googlesource.com/platform/frameworks/base/+/51f2d606dcbfba3cc5b03dfea37c1304b91c232f)
 
 [Add a callback for rendernode parentcount=0](https://android.googlesource.com/platform/frameworks/base/+/44b49f070aafe8ad44efae87341121cce49ff11c)
+
+
+
+__Android 5.0以下系统暂未发现该问题，是因为Android 5.0对硬件加速模块做了一次较大的重构__，详见链接 [Switch DisplayListData to a staging model](https://android.googlesource.com/platform/frameworks/base/+/8de65a8e05285df52a1e6f0c1d5616dd233298a7)
+
+
+
+但是从log上看，__Android 4.4以下也存在类似问题__，详见链接  [Fix hardware layers lifecycle](https://android.googlesource.com/platform/frameworks/base/+/46bfc4811094e5b1e3196246e457d4c6b58332ec)
+
+
 
 #### ChildView不会被绘制的场景例举
 
