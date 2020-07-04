@@ -537,6 +537,25 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
 需要注意的是__DefaultGradleLauncherFactory__在创建__DefaultGradleLauncher__的时候，即会触发创建__BuildScopeServices__，然后触发创建__GradleInternal__，而__GradleInternal__实例化的时候又会创建并注册__GradleScopeServices__，这个__GradleScopeServices__正是任务执行的入口，详情参考[Gradle任务关系构建浅析]()
 
 
+#### Gradle运行的五个阶段
+
+```java
+public class DefaultGradleLauncher implements GradleLauncher {
+    private enum Stage {
+        LoadSettings, Configure, TaskGraph, RunTasks() {
+            @Override
+            String getDisplayName() {
+                return "Build";
+            }
+        }, Finished;
+
+        String getDisplayName() {
+            return name();
+        }
+    }
+    ....
+}
+```
 
 
 
