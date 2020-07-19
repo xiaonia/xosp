@@ -91,3 +91,4 @@ public Object suspendCoroutineUninterceptedOrReturn(Function1 block, Continuatio
 }
 ```
 
+值得注意的是，该方法仅存在于编译期，因为这个方法是一个__inline__方法，kotlin代码经编译之后便不存在对方法的直接调用。
