@@ -2,13 +2,13 @@
 
 #### 引言
 
-我们知道，Groovy和Java一样是运行在JVM上的，而且Groovy代码最终也是编译成Java字节码；但是Groovy却是一门动态语言，可以在运行时扩展程序，比如动态调用（拦截、注入、合成）方法，那么Groovy是如何实现这一切的呢？
+我们知道，Groovy 和 Java 一样是运行在 JVM上 的，而且 Groovy 代码最终也是编译成 Java 字节码；但是 Groovy 却是一门动态语言，可以在运行时扩展程序，比如动态调用（拦截、注入、合成）方法，那么 Groovy 是如何实现这一切的呢？
 
 #### 初探
 
-其实这一切都要归功于Groovy编译器，Groovy编译器在编译Groovy代码的时候，并不是像Java一样，直接编译成字节码，而是编译成 “__动态调用的字节码__”。
+其实这一切都要归功于 Groovy 编译器，Groovy 编译器在编译 Groovy 代码的时候，并不是像 Java 一样，直接编译成字节码，而是编译成 “__动态调用的字节码__”。
 
-例如下面这一段Groovy代码：
+例如下面这一段 Groovy 代码：
 
 ```Groovy
 package groovy
@@ -28,16 +28,7 @@ public class HelloGroovy extends Script {
     public static transient /* synthetic */ boolean __$stMC;
     private static /* synthetic */ ClassInfo $staticClassInfo$;
     private static /* synthetic */ SoftReference $callSiteArray;
-
-    public HelloGroovy() {
-        CallSite[] arrcallSite = HelloGroovy.$getCallSiteArray();
-    }
-
-    public HelloGroovy(Binding context) {
-        CallSite[] arrcallSite = HelloGroovy.$getCallSiteArray();
-        super(context);
-    }
-
+    ......
     public static void main(String ... args) {
         // 调用runScript()方法
         CallSite[] arrcallSite = HelloGroovy.$getCallSiteArray();
@@ -49,43 +40,18 @@ public class HelloGroovy extends Script {
         CallSite[] arrcallSite = HelloGroovy.$getCallSiteArray();
         return arrcallSite[1].callCurrent((GroovyObject)this, (Object)"Hello World!");
     }
-
-    protected /* synthetic */ MetaClass $getStaticMetaClass() {
-        if (((Object)((Object)this)).getClass() != HelloGroovy.class) {
-            return ScriptBytecodeAdapter.initMetaClass((Object)((Object)this));
-        }
-        ClassInfo classInfo = $staticClassInfo;
-        if (classInfo == null) {
-            $staticClassInfo = classInfo = ClassInfo.getClassInfo(((Object)((Object)this)).getClass());
-        }
-        return classInfo.getMetaClass();
-    }
-
+    ......
     private static /* synthetic */ void $createCallSiteArray_1(String[] arrstring) {
         arrstring[0] = "runScript";
         arrstring[1] = "println";
     }
-
-    private static /* synthetic */ CallSiteArray $createCallSiteArray() {
-        String[] arrstring = new String[2];
-        HelloGroovy.$createCallSiteArray_1(arrstring);
-        return new CallSiteArray(HelloGroovy.class, arrstring);
-    }
-
-    private static /* synthetic */ CallSite[] $getCallSiteArray() {
-        CallSiteArray callSiteArray;
-        if ($callSiteArray == null || (callSiteArray = (CallSiteArray)$callSiteArray.get()) == null) {
-            callSiteArray = HelloGroovy.$createCallSiteArray();
-            $callSiteArray = new SoftReference<CallSiteArray>(callSiteArray);
-        }
-        return callSiteArray.array;
-    }
+    ......
 }
 ```
 
-简单的一行代码，经过Groovy编译器编译之后，变得如此复杂。而这就是Groovy编译器做的，将普通的代码编译成可以动态调用的代码。
+简单的一行代码，经过 Groovy 编译器编译之后，变得如此复杂。而这就是 Groovy 编译器做的，将普通的代码编译成可以动态调用的代码。
 
-不难发现，经过编译之后，几乎所有的方法调用都变成通过__CallSite__进行了，这个CallSite就是实现动态调用的入口，我们来看看这个CallSite都做了什么？
+不难发现，经过编译之后，几乎所有的方法调用都变成通过 __CallSite__进行了，这个 CallSite 就是实现动态调用的入口，我们来看看这个 CallSite 都做了什么？
 
 ##### AbstractCallSite
 
@@ -97,7 +63,7 @@ package org.codehaus.groovy.runtime.callsite;
  */
 public class AbstractCallSite implements CallSite {
     ......
-    // call方法是运行时方法调用的时候才触发的
+    // call()方法是运行时方法调用的时候才触发的
     public Object call(Object receiver, Object arg1) throws Throwable {
         CallSite stored = this.array.array[this.index];
         return stored != this ? stored.call(receiver, arg1) : this.call(receiver, ArrayUtil.createArray(arg1));
@@ -108,11 +74,11 @@ public class AbstractCallSite implements CallSite {
     }
 }
 ```
-__CallSite__主要负责__分发和缓存不同类型的方法调用逻辑__，包括 callGetPropertySafe(),  callGetProperty(),  callGroovyObjectGetProperty(),  callGroovyObjectGetPropertySafe(),  call(),  callCurrent(),  callStatic(),  callConstructor()等等
+__CallSite __ 主要负责__分发和缓存不同类型的方法调用逻辑__，包括 callGetPropertySafe(),  callGetProperty(),  callGroovyObjectGetProperty(),  callGroovyObjectGetPropertySafe(),  call(),  callCurrent(),  callStatic(),  callConstructor()等等
 
-对于不同类型的方法调用需要通过不同的CallSite调用，这是因为针对不同类型的方法需要有不同的处理逻辑，否则可能会出现循环调用，抛出StackOverflow异常。例如对于当前对象(this)的方法调用需要通过 callCurrent()，对于static类型方法需要通过 callStatic()，而对于局部变量或者实例变量则是通过 call()；
+对于不同类型的方法调用需要通过不同的 CallSite 调用，因为针对不同类型的方法需要有不同的处理逻辑，否则可能会出现循环调用，抛出 StackOverflow 异常。例如对于当前对象(this)的方法调用需要通过 callCurrent()，对于static类型方法需要通过 callStatic()，而对于局部变量或者实例变量则是通过 call()；
 
-以 call() 方法为例，可以看出：call() 方法首先判断是否存在缓存，如果存在则直接调用，否则调用CallSiteArray.defaultCall() 方法创建并缓存CallSite：
+以 call(...) 方法为例，可以看出：call(...) 方法首先判断是否存在缓存，如果存在则直接调用，否则调用CallSiteArray.defaultCall(...) 方法创建并缓存 CallSite：
 
 ##### CallSiteArray
 
@@ -158,21 +124,21 @@ public final class CallSiteArray {
 }
 ```
 
-createCallSite() 方法针对不同的目标对象的分别创建不同的CallSite，简单的来说：
+createCallSite(...) 方法针对不同的目标对象的分别创建不同的CallSite，简单的来说：
 
-* 对于null值，创建NullCallSite
+* 对于 null 值，创建 NullCallSite
 
-* 对于静态方法，创建StaticMetaClassSite
+* 对于静态方法，创建 StaticMetaClassSite
 
-* 对于实现了GroovyInterceptable接口的Groovy对象，创建的是PogoInterceptableSite。这也是为什么__实现了GroovyInterceptable接口的对象，任何方法调用最终都会调用invokeMethod方法的原因。__
+* 对于实现了 GroovyInterceptable 接口的 Groovy 对象，创建的是 PogoInterceptableSite。这也是为什么__实现了 GroovyInterceptable 接口的对象，任何方法调用最终都会调用 invokeMethod(...) 方法的原因。__
 
-* 对于普通Groovy对象的方法，创建的是PogoMetaClassSite：
+* 对于普通 Groovy 对象的方法，创建的是 PogoMetaClassSite：
 
-* 对于普通Java对象的方法，创建的则是PojoMetaClassSite
+* 对于普通 Java 对象的方法，创建的则是 PojoMetaClassSite
 
-当然实际上，这个过程依然保持足够的开放和灵活性，并不是简单的根据方法类型来创建CallSite，此处不再深入讨论，感兴趣的同学可以通过阅读源码一探究竟~
+当然实际上，这个过程依然保持足够的开放和灵活性，并不是简单的根据方法类型来创建 CallSite，此处不再深入讨论，感兴趣的同学可以通过阅读源码一探究竟~
 
-接下来，我们来看一下以PogoMetaClassSite为例，分析一下CallSite内部的方法调用分发逻辑：
+接下来，我们来看一下以 PogoMetaClassSite 为例，分析一下 CallSite 内部的方法调用分发逻辑：
 
 ##### PogoMetaClassSite
 
@@ -210,9 +176,9 @@ public class PogoMetaClassSite extends MetaClassSite {
 }
 ```
 
-PogoMetaClassSite内部的逻辑比较简单，可以看出，方法调用逻辑最终是委托给__MetaClass__进行处理，如果MetaClass无法处理，则抛出异常或者调用 __GroovyObject__ 的 __invokeMethod__() 方法。
+PogoMetaClassSite 内部的逻辑比较简单，可以看出，方法调用逻辑最终是委托给 __MetaClass__ 进行处理，如果 MetaClass 无法处理，则抛出异常或者调用 __GroovyObject__ 的 __invokeMethod__(...) 方法。
 
-看到这里，其实我们已经可以看出Groovy实现动态特性的基本原理了：__经过Groovy编译器编译之后，所有的方法调用都会通过Groovy构建的系统进行调用，而这个系统正是实现其动态特性的关键。__
+看到这里，其实我们已经可以看出 Groovy 实现动态特性的基本原理了：__经过 Groovy 编译器编译之后，所有的方法调用都会通过 Groovy 构建的系统进行调用，而这个系统正是实现其动态特性的关键。__
 
 接下来，我们更进一步，分析一下MetaClass是如何分发方法调用的：
 
@@ -262,7 +228,7 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
             method = getMethodWithCaching(sender, "doCall", arguments, isCallToSuper);
         }
         if (method==null) {
-            // 查找方法(允许使用前次查找的缓存)
+            // 查找方法(允许优先使用前次查找的缓存)
             method = getMethodWithCaching(sender, methodName, arguments, isCallToSuper);
         }
         MetaClassHelper.unwrap(arguments);
@@ -287,14 +253,14 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
     public MetaMethod getMethodWithCaching(Class sender, String methodName, Object[] arguments, boolean isCallToSuper) {
         // let's try use the cache to find the method
         if (!isCallToSuper && GroovyCategorySupport.hasCategoryInCurrentThread()) {
-            // 查找方法(不允许使用前次查找的缓存，因为通过Category注入的方法优先级最高，需要“实时”查找)
+            // 查找方法(不允许优先使用前次查找的缓存，因为通过Category注入的方法优先级最高，需要重新查找)
             return getMethodWithoutCaching(sender, methodName, MetaClassHelper.convertToTypeArray(arguments), isCallToSuper);
         } else {
             final MetaMethodIndex.Entry e = metaMethodIndex.getMethods(sender, methodName);
             if (e == null)
               return null;
 
-            // 查找super方法或者普通方法(允许使用前次查找的缓存)
+            // 查找super方法或者普通方法(允许优先使用前次查找的缓存)
             return isCallToSuper ? getSuperMethodWithCaching(arguments, e) : getNormalMethodWithCaching(arguments, e);
         }
     }
@@ -303,21 +269,19 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
 }
 ```
 
-首先，__通过调用 _getMetaMethod()_ 方法查找目标类及其父类是否存在该方法（包括参数类型兼容的方法）__:
+首先，__通过调用 _getMetaMethod(...)_ 方法查找目标类及其父类是否存在该方法（包括参数类型兼容的方法）__:
 
-* 如果调用的是__GeneratedClosure__的 _call ( )_ 方法，则转换成查找 _doCall ( )_ 方法.
-
-* 如果调用的是__this__方法，则__查找的优先级依次为 1.目标类及其父类通过Category注入的方法、2.目标类及其父类通过MetaClass(ExpandoMetaClass)注入的方法、3.目标类及其父类定义的方法。同时还需遵循定义在子类的方法优先于(覆盖)定义在父类的方法的原则。__
-
-* 如果调用的是__super__方法，则只会查找其父类(当前类的MetaClassImpl初始化的时候)已有的方法，也就是说super的调用是__部分动态调用__。（调用super方法的时候，如果父类不存在该方法，则依然会走invokePropertyOrMissing方法(子类property优先)）。
-
-* 如果未找到相关方法并且方法参数只有一个List类型的参数，则会__尝试展开该List__并再次通过上面的逻辑进行查找。
+* 如果调用的是__GeneratedClosure__的 _call(...)_ 方法，则转换成查找 _doCall(...)_ 方法.
+* 如果调用的是 __this__ 方法，则__其优先级依次为 1.目标类及其父类通过 Category 注入的方法、2.目标类及其父类通过 MetaClass(ExpandoMetaClass) 注入的方法、3.目标类及其父类定义的方法。同时还需 *遵循定义在子类的方法优先于(覆盖)定义在父类的方法的原则* 。__
+* __注意__：针对 __this__ 方法，此处只会查找 Category 注入的和已经在__方法列表(metaMethodIndex)__里的方法，而不会实时查找。实时查找的过程在下文的 __invokeMissingMethod(...)__ 方法触发，另外实时查找会把找到(新添加)的方法保存到这个方法列表中。
+* 如果调用的是 __super(...)__ 方法，则只会查找其父类(当前类的 MetaClassImpl 初始化的时候)已有的方法，也就是说 super 的调用是__部分动态调用__。（调用 super 方法的时候，如果父类不存在该方法，则依然会走invokePropertyOrMissing 方法(子类 property 优先)）。
+* 如果未找到相关方法并且方法参数只有一个 List 类型的参数，则会__尝试展开该List__并再次通过上面的逻辑进行查找。
 
 接着，如果目标对象是闭包(Closure)，则需要走闭包的特殊处理逻辑，此处暂不讨论。
 
-最后，如果找到了匹配的方法，则直接调用该方法；如果没有找到匹配的方法，则会调用 invokePropertyOrMissing() 方法。
+最后，如果找到了匹配的方法，则直接调用该方法；如果没有找到匹配的方法，则会调用 invokePropertyOrMissing(...) 方法。
 
-接着我们来看看 invokePropertyOrMissing() 方法的处理逻辑：
+接着我们来看看 invokePropertyOrMissing(...) 方法的处理逻辑：
 
 ##### invokePropertyOrMissing
 
@@ -365,13 +329,13 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
     ......
 }
 ```
-invokePropertyOrMissing方法的调用过程：
+invokePropertyOrMissing(...) 方法的调用过程：
 
-* __查找目标类及其父类是否存在与该方法同名的Property，且该Property为Closure类型，则调用该Closure__。 需要注意的是：这里并不是通过MetaClass注入方法的实现逻辑，通过MetaClass注入的方法不会以Property的形式存在(getter和setter方法除外)，而是以ClosureMetaMethod类型的数据缓存到目标类的方法信息中。
+* __查找目标类及其父类是否存在与该方法同名的 Property，且该 Property 为 Closure 类型，则调用该Closure__。 __注意__：这里并不是通过 MetaClass 注入方法的实现逻辑，通过 MetaClass 注入的方法不会以Property 的形式存在(getter和setter方法除外)，而是以 ClosureMetaMethod 类型的数据保存在到目标类的方法列表中。
 
-* 如果未找到相关Property，且目标对象是Script类型，则尝试查找是否存在以该方法名命名的BindingVariable，如果存在则调用其 call ( ) 方法。
+* 如果未找到相关 Property，且目标对象是 Script 类型，则尝试查找是否存在以该方法名命名的BindingVariable，如果存在则调用其 call (...) 方法。
 
-* 如果以上尝试均失败了，则调用 invokeMissingMethod() 方法
+* 如果以上尝试均失败了，则调用 invokeMissingMethod(...) 方法
 
 ##### invokeMissingMethod
 
@@ -381,7 +345,7 @@ package groovy.lang;
 public class MetaClassImpl implements MetaClass, MutableMetaClass {
     ......
     private Object invokeMissingMethod(Object instance, String methodName, Object[] arguments, RuntimeException original, boolean isCallToSuper) {
-        // 非super.xxx() 调用
+        // 注意这段逻辑，仅针对非super.xxx() 调用
         if (!isCallToSuper) {
             Class instanceKlazz = instance.getClass();
             if (theClass != instanceKlazz && theClass.isAssignableFrom(instanceKlazz))
@@ -392,13 +356,14 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
             // 查找并调用MixIn注入的方法
             MetaMethod method = findMixinMethod(methodName, argClasses);
             if(method != null) {
-                onMixinMethodFound(method);
+                onMixinMethodFound(method); // 空函数
                 return method.invoke(instance, arguments);
             }
 
             // 遍历ClassHierarchy，再一次查找并调用MetaMethod或者SubClassMethod
             method = findMethodInClassHierarchy(instanceKlazz, methodName, argClasses, this);
             if(method != null) {
+                // 将找到的方法保存到方法列表中
                 onSuperMethodFoundInHierarchy(method);
                 return method.invoke(instance, arguments);
             }
@@ -408,6 +373,7 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
             final Class[] invokeMethodArgs = {String.class, Object[].class};
             method = findMethodInClassHierarchy(instanceKlazz, INVOKE_METHOD_METHOD, invokeMethodArgs, this );
             if(method instanceof ClosureMetaMethod) {
+                // 将找到的方法保存到方法列表中
                 onInvokeMethodFoundInHierarchy(method);
                 return method.invoke(instance, invokeMethodArgs);
             }
@@ -435,25 +401,25 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
 }
 ```
 
-invokeMissingMethod方法的调用过程如下，__如果调用的是this方法，则：__
+invokeMissingMethod(...) 方法的调用过程如下，__如果调用的是 this 方法，则：__
 
-* __查找是否存在通过MixIn注入的方法，如果存在则调用该方法。__
+* __查找是否存在通过 MixIn 注入的方法，如果存在则调用该方法。__
 
-* 遍历ClassHierarchy（__superClasses__和__interfaces__），再一次查找是否存在符合条件的MetaMethod或者SubClassMethod方法（如果存在多个，则返回匹配度最高的）。__SubClassMethod是定义在目标类或者实例范围内的动态方法，其作用域仅限于目标类或实例__。
+* 遍历 ClassHierarchy（__superClasses__和__interfaces__），再一次查找是否存在符合条件的 MetaMethod 或者SubClassMethod 方法（如果存在多个，则返回匹配度最高的）。__SubClassMethod 是定义在目标类或者实例范围内的动态方法，其作用域仅限于目标类或实例__。
 
-* 遍历ClassHierarchy，查找是否存在 __invokeMethod()__ 方法（如果存在多个，则返回匹配度最高的），且该方法是 _ClosureMetaMethod_ 类型(即通过MetaClass注入的拦截方法)，如果存在则调用该方法。
+* 遍历 ClassHierarchy，查找是否存在 __invokeMethod(...)__ 方法（如果存在多个，则返回匹配度最高的），且该方法是 _ClosureMetaMethod_ 类型(即通过 MetaClass 注入的拦截方法)，如果存在则调用该方法。
 
-* 如果通过以上逻辑还是查找不到任何我们要调用的方法信息，那么就会__尝试调用  _methodMissing_ 方法__。__这里会优先调用通过Category注入的 _methodMissing()_ 方法，如果未找到才调用(定义或注入的) _methodMissing()_ 方法__
+* 如果通过以上逻辑还是查找不到任何我们要调用的方法信息，那么就会__尝试调用  _methodMissing(...)_ 方法__。__这里会优先调用通过Category注入的 _methodMissing(...)_ 方法，如果未找到才调用(定义或注入的) _methodMissing(...)_ 方法__
 
-以上几步均是针对this方法的处理逻辑，__如果调用的是super方法，那么会直接尝试调用(定义或注入的) _methodMissing()_ 方法__
+以上几步均是针对this方法的处理逻辑，__如果调用的是 super(...) 方法，那么会直接尝试调用(定义或注入的) _methodMissing(...)_ 方法__
 
-最后，__如果 _methodMissing()_ 方法也不存在，就抛出MissingMethodException异常__
+最后，__如果 _methodMissing(...)_ 方法也不存在，就抛出 MissingMethodException 异常__
 
-至此，我们已经完整的分析了方法查找和分发的流程，也看到了__Category__和__MixIn__注入的方法是如何被调用到的。那么Groovy又是如何将MetaClass和类或者实例绑定在一起的呢？
+至此，我们已经完整的分析了方法查找和分发的流程，也看到了__Category __和 __MixIn__ 注入的方法是如何被调用到的。那么 Groovy 又是如何将 MetaClass 和类或者实例绑定在一起的呢？
 
 #### MetaClass
 
-首先，我们来分析一下MetaClass从创建到初始化的过程，以GroovyObjectSupport这个官方基类为例：
+首先，我们来分析一下 MetaClass 从创建到初始化的过程，以 GroovyObjectSupport 这个官方基类为例：
 
 ##### GroovyObjectSupport
 
@@ -470,37 +436,18 @@ public abstract class GroovyObjectSupport implements GroovyObject {
     public GroovyObjectSupport() {
         this.metaClass = getDefaultMetaClass();
     }
-
-    public Object getProperty(String property) {
-        return getMetaClass().getProperty(this, property);
-    }
-
-    public void setProperty(String property, Object newValue) {
-        getMetaClass().setProperty(this, property, newValue);
-    }
-
+    ......
     public Object invokeMethod(String name, Object args) {
         return getMetaClass().invokeMethod(this, name, args);
     }
-
-    public MetaClass getMetaClass() {
-        return this.metaClass;
-    }
-
-    public void setMetaClass(MetaClass metaClass) {
-        this.metaClass =
-                null == metaClass
-                    ? getDefaultMetaClass()
-                    : metaClass;
-    }
-
+    ......
     private MetaClass getDefaultMetaClass() {
         return InvokerHelper.getMetaClass(this.getClass());
     }
 }
 ```
 
-默认的MetaClass是通过InvokerHelper.getMetaClass(this.getClass())获取的。
+默认的 MetaClass 是通过 InvokerHelper.getMetaClass(this.getClass()) 获取的。
 
 ##### InvokerHelper
 
@@ -521,7 +468,7 @@ public class InvokerHelper {
 }
 ```
 
-而InvokerHelper则是通过MetaClassRegistryImpl创建并获取MetaClass的。接下来，我们来看一下MetaClassRegistryImpl是如何创建和初始化MetaClass的：
+而 InvokerHelper 则是通过 MetaClassRegistryImpl 创建并获取 MetaClass 的。接下来，我们来看一下 MetaClassRegistryImpl 是如何创建和初始化 MetaClass 的：
 
 ##### MetaClassRegistryImpl
 
@@ -542,7 +489,7 @@ public class MetaClassRegistryImpl implements MetaClassRegistry{
 }
 ```
 
-MetaClassRegistryImpl是通过ClassInfo创建并获取MetaClass实例的。
+MetaClassRegistryImpl 是通过 ClassInfo 创建并获取 MetaClass 实例的：
 
 ##### ClassInfo
 
@@ -595,7 +542,7 @@ public class ClassInfo implements Finalizable {
     ......
 }
 ```
-ClassInfo是实际上创建和缓存MetaClass的类，如果已创建则直接返回，如果未创建则创建并缓存MetaClass。每个类都绑定唯一的一个MetaClass实例以及一个ClassInfo实例，用于缓存相关信息。
+__ClassInfo是实际上创建和保存MetaClass的类，如果已创建则直接返回；如果未创建则创建并保存MetaClass。每个类都绑定一个MetaClass实例以及一个ClassInfo实例，用于保存相关信息__。
 
 接下来，我们来看一下MetaClassImpl初始化的过程：
 
@@ -608,10 +555,10 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
     ......
     public synchronized void initialize() {
         if (!isInitialized()) {
-            // 解析目标类及其父类的所有方法，并缓存下来
+            // 解析目标类及其父类的所有方法，并保存到方法列表
             fillMethodIndex();
             try {
-                // 解析目标类及其父类的所有属性，并缓存下来
+                // 解析目标类及其父类的所有属性，并保存到属性列表
                 addProperties();
             } catch (Throwable e) {
                 if (!AndroidSupport.isRunningAndroid()) {
@@ -626,16 +573,16 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
     ......
 }
 ```
-MetaClassImpl在初始化的时候就会通过反射解析目标类及其父类的所有方法(Methods)和属性(Fields和Setters以及Getters)，甚至包括其父类已经动态注入的方法(getNewMetaMethods)，并缓存下来。
+MetaClassImpl 在初始化的时候就会通过反射解析目标类及其父类的所有方法（Methods）和属性（Fields和Setters以及Getters），甚至包括其父类已经动态注入的方法（getNewMetaMethods），并保存到方法列表和属性列表。
 
-那么，如果父类在子类已经初始化MetaClass之后再动态注入的方法，子类是不是就存在调用不到该方法的可能呢。事实上，在上文我们分析__invokeMissingMethod()__这个方法的时候，提到__如果调用的是this方法，则会遍历ClassHierarchy再次查找方法，其中就包含查找superClasses或者interfaces在初始化之后动态注入的方法。而如果是super方法，则无此逻辑。__因此，可以看出，在子类初始化之后再注入父类的方法其优先级是非常低的。
+那么，如果父类在子类已经初始化 MetaClass 之后再动态注入的方法，子类是不是就存在调用不到该方法的可能呢？事实上，在上文我们分析 __invokeMissingMethod(...)__ 这个方法的时候，提到__如果调用的是 this 方法，则会遍历 ClassHierarchy 再次查找方法，其中就包含 superClasses 或者 interfaces 在初始化之后动态注入的方法。而如果是 super(...) 方法，则无此逻辑。__因此，可以看出，在子类初始化之后再注入父类的方法其优先级是非常低的。
 
-至此，我们已经讲完了MetaClassImpl从创建到初始化的过程。但是还有几个问题没有弄清楚，比如Groovy官方提供的方法(例如use方法)是如何注入的呢？以及ExtensionModule又是如何注入的？
+至此，我们已经讲完了 MetaClassImpl 从创建到初始化的过程。但是还有几个问题没有弄清楚，比如 Groovy 官方提供的方法（例如use方法）是如何注入的呢？以及 ExtensionModule 又是如何注入的？
 
 
 #### MetaClassRegistryImpl
 
-我们不妨先来看一下MetaClassRegistryImpl在初始化的时候都做了什么？
+我们不妨先来看一下 MetaClassRegistryImpl 在初始化的时候都做了什么？
 
 ```java
 package org.codehaus.groovy.runtime.metaclass;
@@ -759,22 +706,22 @@ public class MetaClassRegistryImpl implements MetaClassRegistry{
 }
 ```
 
-MetaClassRegistryImpl在其实例化的时候就会通过 __registerMethods()__ 方法去加载默认的方法，包括：
+MetaClassRegistryImpl 在其实例化的时候就会通过 __registerMethods(...)__ 方法去加载默认的方法，包括：
 
-* __加载DefaultGroovyMethod即DgmMethod__。DgmMethod是一系列定义在org.codehaus.groovy.runtime包下，以dgm$n命名的方法类，其信息存储在 __/META-INF/dgminfo__ 文件上。registerMethods先读取该文件的内容，然后根据文件内容载入这些方法，并以 __NewInstanceMetaMethod(实例方法)__ 的形式保存到各自定义类的方法信息上。这些方法是Groovy系统提供的一些动态方法，例如use，with等等。这就是为什么我们可以直接使用这些方法的原因：MetaClassRegistryImpl在实例化的时候就把这些方法加载进来了，而且其目标类普遍为基类，如Objec、String、Collection等等，这就保证了我们可以在这些类及其子类上正常的调用这些方法。
+* __加载 DefaultGroovyMethod 即 DgmMethod__。DgmMethod 是一系列定义在 org.codehaus.groovy.runtime 包下，以 dgm$n 命名的方法类，其信息存储在 __/META-INF/dgminfo__ 文件上。registerMethods(...) 先读取该文件的内容，然后根据文件内容载入这些方法，并以 __NewInstanceMetaMethod(实例方法)__ 的形式保存到各自定义类的方法列表上。这些方法是 Groovy 系统提供的一些动态方法，例如use，with等等。这就是为什么我们可以直接使用这些方法的原因：MetaClassRegistryImpl 在实例化的时候就把这些方法加载进来了，而且其目标类普遍为基类，如Objec、String、Collection等等，这就保证了我们可以在这些类及其子类上正常的调用这些方法。
 
-* 通过registerMethods加载VMPluginFactory.getPlugin().getPluginDefaultGroovyMethods()这个方法返回的所有类的静态方法，并以NewInstanceMetaMethod(实例方法)的形式保存到目标类(方法的第一个参数对应的类)的方法信息上，然后在调用的时候转换成调用静态方法，并插入调用的对象作为第一个参数(类似于通过Category注入方法)。这些方法是为了支持不同版本的JVM而提供的兼容方法，不需要过多关注。
+* 通过 registerMethods(...) 加载 VMPluginFactory.getPlugin().getPluginDefaultGroovyMethods() 这个方法返回的所有类的静态方法，并以 NewInstanceMetaMethod(实例方法) 的形式保存到目标类(方法的第一个参数对应的类)的方法信息上，然后在调用的时候转换成调用静态方法，并插入调用的对象作为第一个参数(类似于通过Category注入方法)。这些方法是为了支持不同版本的JVM而提供的兼容方法，不需要过多关注。
 
-* __通过registerMethods去加载DefaultGroovyStaticMethods类提供的静态方法__。这些静态方法会以__NewStaticMetaMethod(静态方法)__ 的形式保存到目标类(方法的第一个参数对应的类)的方法信息上，然后在调用的时候插入一个null值作为第一个参数，例如Thread.start()方法等等。
+* __通过 registerMethods(...) 去加载 DefaultGroovyStaticMethods 类提供的静态方法__。这些静态方法会以 __NewStaticMetaMethod(静态方法)__ 的形式保存到目标类(方法的第一个参数对应的类)的方法列表上，然后在调用的时候插入一个null值作为第一个参数，例如 Thread.start() 方法等等。
 
-* 通过registerMethods加载VMPluginFactory.getPlugin().getPluginStaticGroovyMethods()这个方法返回的所有类的静态方法，以NewStaticMetaMethod(静态方法)的形式保存到目标类(方法的第一个参数对应的类)的方法信息上，然后在调用的时候插入一个null值作为第一个参数。这些方法也是为了支持不同版本的JVM而提供的兼容方法不需要过多关注。
+* 通过 registerMethods(...) 加载 VMPluginFactory.getPlugin().getPluginStaticGroovyMethods() 这个方法返回的所有类的静态方法，以 NewStaticMetaMethod(静态方法) 的形式保存到目标类(方法的第一个参数对应的类)的方法信息上，然后在调用的时候插入一个 null 值作为第一个参数。这些方法也是为了支持不同版本的JVM而提供的兼容方法，不需要过多关注。
 
-* 最后，__通过ExtensionModuleScanner加载默认的ExtensionModule方法__
+* 最后，__通过 ExtensionModuleScanner 加载默认的 ExtensionModule 方法__
 
 
 #### ExpandoMetaClass
 
-上文我们提到类或者实例默认绑定的MetaClass是MetaClassImpl类型的实例，但是事实上，当我们通过metaClass注入方法的时候，其实是通过ExpandoMetaClass注入的，我们不妨简单看一下ExpandoMetaClass的代码：
+上文我们提到类或者实例默认绑定的 MetaClass 是 MetaClassImpl 类型的实例，但是事实上，__当我们通 metaClass 注入方法的时候，其实是通过 ExpandoMetaClass 注入的__，我们不妨简单看一下 ExpandoMetaClass 的代码：
 
 ```java
 package groovy.lang;
@@ -819,27 +766,27 @@ public class ExpandoMetaClass extends MetaClassImpl implements GroovyObject {
     ...... 
 }
 ```
-ExpandoMetaClass保存了动态注入的方法和属性的信息，其中包括：
+ExpandoMetaClass 保存了动态注入的方法和属性的信息，其中包括：
 
-* mixinClasses是通过MixIn动态注入的类信息
+* mixinClasses 是通过 MixIn 动态注入的类信息
 
-* invokeMethodMethod是动态注入的 __“invokeMethod”__ 方法
+* invokeMethodMethod 是动态注入的 __“invokeMethod(...)”__ 方法
 
-* invokeStaticMethodMethod也是动态注入的 __“invokeStaticMethod”__ 方法
+* invokeStaticMethodMethod 是动态注入的 __“invokeStaticMethod(...)”__ 方法
 
-* expandoMethods是通过metaClass动态注入的方法集合
+* expandoMethods 是通过 metaClass 动态注入的方法集合
 
-* expandoSubclassMethods是通过MetaClass注入的subclass方法集合
+* expandoSubclassMethods 是通过 metaClass动态 注入的 subclass 方法集合
 
-* beanPropertyCache是动态注入的实例属性
+* beanPropertyCache 是动态注入的实例属性集合
 
-* staticBeanPropertyCache是动态注入的静态属性
+* staticBeanPropertyCache 是动态注入的静态属性集合
 
-另外，从ExpandoMetaClass的代码，我们也可以看出，__如果一个类或实例，通过metaClass注入了 _“invokeMethod”_ 拦截方法，那么任何的方法调用都会调用该方法；__
+另外，从 ExpandoMetaClass 的代码，我们也可以看出，__如果一个类或实例，通过 metaClass 注入了 _“invokeMethod(...)”_ 拦截方法，那么任何的方法调用都会调用该方法；__
 
 #### HandleMetaClass
 
-既然类或者实例默认绑定的MetaClass是MetaClassImpl类的实例，那么当我们通过 _metaClass_ 动态注入方法的时候，又是如何切换到ExpandoMetaClass的呢？
+既然类或者实例默认绑定的 MetaClass 是 MetaClassImpl 类的实例，那么当我们通过 _metaClass_ 动态注入方法的时候，又是__如何切换到 ExpandoMetaClass 的__呢？
 
 事实上，当我们通过metaClass注入方法的时候，例如下面这一段代码:
 
@@ -868,11 +815,11 @@ private static /* synthetic */ void $createCallSiteArray_1(String[] arrstring) {
 }
 ```
 
-我们发现，Groovy会将这个 __.metaClass__ 调用编译成  __getProperty(String.class，"metaClass")__。上文我们说到，MetaClassImplRegistry在实例化的时候，即会加载GroovyDefaultMethod，其中就包括定义在Class类及Object类上的 __getMetaClass()__ 方法。因此  __getProperty(String.class，"metaClass")__ 这个方法最终会调用到定义在DefaultGroovyMethods中的这个 __getMetaClass()__ 方法。
+我们发现，Groovy会将这个 __.metaClass__ 调用编译成  __getProperty(String.class，"metaClass")__。上文我们说到，MetaClassImplRegistry 在实例化的时候，即会加载 GroovyDefaultMethod，其中就包括定义在 Class 类及Object 类上的 __getMetaClass(...)__ 方法。因此  __getProperty(String.class，"metaClass")__ 这个方法最终会调用到定义在 DefaultGroovyMethods 中的这个 __getMetaClass(...)__ 方法。
 
 这里面涉及到一个知识点：
-    __Groovy的getProperty() 方法除了查找类中定义的 Field 之外，还会查找动态注入的 Property 以及 Getter() 方法。
-    与此同时 getAttribute() 方法却只会查找类中定义的 Field。__
+    __Groovy的getProperty(...) 方法除了查找类中定义的 Field 之外，还会查找动态注入的 Property 以及 Getter() 方法。
+    与此同时 getAttribute(...) 方法却只会查找类中定义的 Field。__
 
 ```java
 package org.codehaus.groovy.runtime;
@@ -905,9 +852,9 @@ public class DefaultGroovyMethods extends DefaultGroovyMethodsSupport {
 }
 ```
 
-从源码可以看出，当我们以  _String.metaClass_ 这种形式访问 _metaClass_ 这个Property的时候，如果String这个类绑定的MetaClass不是ExpandoMetaClass类型的实例，那么就会创建并返回一个HandleMetaClass类的实例。
+从源码可以看出，当我们以  _String.metaClass_ 这种形式访问 _metaClass_ 这个 Property 的时候，如果 String 这个类绑定的 MetaClass 不是 ExpandoMetaClass 类型的实例，那么就会创建并返回一个 HandleMetaClass 类的实例。
 
-__HandleMetaClass只是一个代理类，封装和延迟了创建ExpandoMetaClass的时机__：
+__HandleMetaClass 只是一个代理类，封装和延迟了创建 ExpandoMetaClass 的时机__：
 
 ```java
 package org.codehaus.groovy.runtime;
@@ -961,9 +908,9 @@ public class HandleMetaClass extends DelegatingMetaClass {
 }
 ```
 
-HandleMetaClass在初始化或者调用到相关方法的时候，就会为这个类或实例创建一个新的ExpandoMetaClass，并更新该类或对象所绑定的MetaClass信息。此时，我们就可以通过metaClass动态注入方法了。
+HandleMetaClass 在初始化或者调用到相关方法的时候，就会为这个类或实例创建一个新的ExpandoMetaClass，并更新该类或对象所绑定的 MetaClass 信息。此时，我们就可以通过 metaClass 动态注入方法了。
 
-因为每个类或实例所绑定的ExpandoMetaClass是唯一的，由此可知 __在类上动态注入的方法是全局，而在实例上动态注入的方法则是临时的__。
+因为每个类或实例所绑定的 ExpandoMetaClass 是唯一的，由此可知 __在类上动态注入的方法是全局，而在实例上动态注入的方法则是局部的__。
 
 #### Category
 
@@ -975,7 +922,7 @@ HandleMetaClass在初始化或者调用到相关方法的时候，就会为这�
 
 #### ExtensionModule
 
-接下来，我们来分析一下ExtensionModule是如何实现，RTFSC：
+接下来，我们来分析一下 ExtensionModule 是如何实现，RTFSC：
 
 ```java
 package groovy.grape
@@ -1030,7 +977,7 @@ class GrapeIvy implements GrapeEngine {
     ......
 }
 ```
-Groovy在加载依赖的jar包的时候，会查找是否存在 __"META-INF/services/org.codehaus.groovy.runtime.ExtensionModule"__ 或者 __"META-INF/groovy/org.codehaus.groovy.runtime.ExtensionModule"__ 这两个文件，如果存在则说明定义了ExtensionModule，那么就会读取这两个文件的内容。
+Groovy  在加载依赖的 jar 包的时候，会查找是否存在 __"META-INF/services/org.codehaus.groovy.runtime.ExtensionModule"__ 或者 __"META-INF/groovy/org.codehaus.groovy.runtime.ExtensionModule"__ 这两个文件，如果存在则说明定义了ExtensionModule，那么就会读取这两个文件的内容。
 
 ```java
 package org.codehaus.groovy.runtime.metaclass;
@@ -1080,9 +1027,9 @@ public class MetaClassRegistryImpl implements MetaClassRegistry{
     }
 }
 ```
-读取 __ExtensionModule文件__ 内容之后，就可以找到定义ExtensionModule方法的类，然后加载该类，并加载该类定义的静态方法，并分别以NewStaticMetaMethod(静态方法)和NewInstanceMetaMethod(实例方法)的形式保存到目标类(方法的第一个参数对应的类)的方法信息中。__NewStaticMetaMethod(静态方法) __和 __NewInstanceMetaMethod(实例方法) __这两种方法在调用的时候会分别插入 __null值__ 和当前 __对象__ 作为方法的第一个参数，然后再通过反射调用真正的Method。
+读取 __ExtensionModule文件__ 内容之后，就可以找到定义 ExtensionModule 方法的类，然后加载该类及其中定义的静态方法，并分别以 NewStaticMetaMethod(静态方法) 和 NewInstanceMetaMethod(实例方法) 的形式保存到目标类(方法的第一个参数对应的类)的方法列表中。__NewStaticMetaMethod(静态方法) __和 __NewInstanceMetaMethod(实例方法) __这两种方法在调用的时候会分别插入 __null值__ 和 __当前对象__ 作为方法的第一个参数，然后再通过反射调用真正的 Method。
 
-因此，当我们定义StaticExtensionMethod的时候，应慎用第一个参数，因为它的值可能为null，这个参数只是为了标识目标类。而当我们定义InstanceExtensionMethod的时候，其第一个参数就是目标类的实例对象。
+因此，当我们定义 StaticExtensionMethod 的时候，应慎用第一个参数，因为它的值可能为 null，这个参数只是为了标识目标类。而当我们定义 InstanceExtensionMethod 的时候，其第一个参数就是目标类的实例对象。
 
 
 
