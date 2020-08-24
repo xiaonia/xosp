@@ -58,9 +58,9 @@ public final class ViewTreeObserver {
 }
 ```
 
-* 从源码上可以看出，如果View还__未attach__或者View__已经detach__，那么我们通过View.getViewTreeObserver()方法，获取到的是__mFloatingTreeObserver__。
+* 从源码上可以看出，如果View还__未attach__或者View__已经detach__，那么我们通过 View.getViewTreeObserver() 方法，获取到的是__mFloatingTreeObserver__。
 
-* 这样就会存在一个问题：如果我们在View__已经detach__的状态下，尝试去注销listener，那么，我们注销的只是__mFloatingTreeObserver__中的listener；而__mAttachInfo.mTreeObserver__中的listener并未被注销，酱紫就会出现内存泄漏。
+* 这样就会存在一个问题：如果我们在View__已经detach__的状态下，尝试去注销 listener，那么，我们注销的只是 __mFloatingTreeObserver__ 中的listener；而__mAttachInfo.mTreeObserver__ 中的listener并未被注销，酱紫就会出现内存泄漏。
 
 
 #### 实例
@@ -68,8 +68,6 @@ public final class ViewTreeObserver {
 ##### 例1
 
 ![图001](./mml_viewtreeobserver_001.png)
-
-上图是首页内嵌详情页面发现的内存泄漏问题，几乎所有的OnGlobalFocusListener都未被正常注销；
 
 ##### 例2
 
@@ -96,20 +94,20 @@ public static void test(final View view) {
 
 ###### 前置条件 
 
-* 这个问题出现的原因在于__注销时机不正确__，也就是在View已经detach了才去尝试注销listener
+* 这个问题出现的原因在于__注销时机不正确__，也就是在 View 已经 detach 了才去尝试注销 listener
 
 ###### 分析特征
 
-* 泄漏对象通过ViewTreeObserver而被链接到相关系统类
+* 泄漏对象通过 ViewTreeObserver 而被链接到相关系统类
 
 
 #### 解决
 
-* 应尽量确保View在detach的时候，注销相应的listener
+* 应尽量确保 View 在 detach 的时候，注销相应的 listener
 
-* 另外对于在listener回调中执行注销的逻辑，也应该注意有可能存在该listener被注册而未被回调的情况
+* 另外对于在 listener 回调中执行注销的逻辑，也应该注意有可能存在该 listener 被注册而未被回调的情况
 
-* 基线目前已提供兼容处理类ViewTreeObserverDelegate，代理ViewTreeObserver逻辑：View在attach的时候注册所有的listener，View在detach的时候注销所有的listener
+* 兼容处理类 ViewTreeObserverDelegate，代理 ViewTreeObserver 逻辑：View 在 attach 的时候注册所有的 listener，View 在 detach 的时候注销所有的 listener
 
 
 #### 附注

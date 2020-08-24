@@ -6,7 +6,7 @@
 
 #### The Kotlin reflection API: KClass, KCallable, KFunction, and KProperty
 
-![Hierarchy of interfaces in the Kotlin reflection API](./../images/Hierarchy of interfaces in the Kotlin reflection API.png)
+![Hierarchy of interfaces in the Kotlin reflection API](./../../images/Hierarchy of interfaces in the Kotlin reflection API.png)
 
 ##### KClass
 

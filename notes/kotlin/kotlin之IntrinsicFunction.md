@@ -1,4 +1,4 @@
-###  kotlin之IntrinsicFunction
+###  kotlin之 Intrinsic Function
 
 
 

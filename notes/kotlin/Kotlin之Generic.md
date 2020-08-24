@@ -5,7 +5,7 @@
 
 [inline-functions.html](https://kotlinlang.org/docs/reference/inline-functions.html)
 
-[Kotlin in Action](books/kotlin/Kotlin in Action.pdf)
+[Kotlin in Action(English)](books/kotlin/Kotlin in Action(English).pdf)
 
 
 
@@ -29,11 +29,11 @@
 
 #### 协变(covariant) & 逆变(contravariance) & 不变(invariant)
 
-__不变__指的是__subtype__和__subclass__没有任何关系，例如：若 B extends A，则任何情况下 List\<A> 和 List\<B> 均不能互相替代。事实上，在Java中任何指定类型（不加任何特殊修饰符）的泛型都是__不变__，例如：List\<String>。正是由于Java中默认__不变__的存在，因此才需要__协变__和__逆变__，否则泛型几乎毫无灵活性可言。
+__不变__指的是__subtype__和__subclass__没有从属关系，例如：若 B extends A，则任何情况下 List\<A> 和 List\<B> 均不能互相替代。事实上，在Java中任何指定类型（不加任何特殊修饰符）的泛型都是__不变__，例如：List\<String>和List\<Object>，未使用通配符的情况下是不能互相替代的。正是由于Java中默认__不变__的存在，因此才需要__协变__和__逆变__，否则泛型几乎毫无__灵活性__可言。
 
 所谓__协变__指的是__subtype__和__subclass__保持__相同__的从属关系，例如：若 B extends A，则使用 List\<A> 的地方可以用 List\<B> 替代。__协变__比较好理解，因为它符合我们对派生关系的认识。
 
-而__逆变__则指的是__subtype__和__subclass__保持__相反__的从属关系，例如：若 B extends A，则使用 List\<B> 的可以用 List\<A> 替代。那么__逆变__又是为什么呢？其实这个就是由于上文我们讲到的__泛型擦除__，在运行时， List\<A> 和  List\<B> 都会以 List\<Object> 存在，那么就存在这样一种可能：如果相关的逻辑处理只需处理 A 相关的逻辑而不需要处理 B 额外拓展的逻辑，那么我们就可以使用  List\<A> 替代  List\<B>，例如：
+而__逆变__则指的是__subtype__和__subclass__保持__相反__的从属关系，例如：若 B extends A，则使用 List\<B> 的地方可以用 List\<A> 替代。那么__逆变__又是为什么呢？其实这个就是由于上文我们讲到的__泛型擦除__，在运行时， List\<A> 和  List\<B> 都会以 List\<Object> 存在，那么就存在这样一种可能：如果相关的逻辑处理__只涉及泛型上界(例如Object)__，那么我们就可以使用  List\<A> 替代  List\<B>，例如：
 
 ```kotlin
 open class A
@@ -52,7 +52,7 @@ fun test() {
 }
 ```
 
-尽管 printList 声明处理 List\<in B> 类型的数据，但是显而易见  printlnList  传入 任何B类和B的父类 的 List 均可以，这就跟java代码声明 __List\<? super B> listB__是类似的，这就是逆变。
+尽管 printList 声明处理 List\<in B> 类型的数据，但是显而易见  printlnList  只涉及泛型上界Object，因此传入任何 B类 和 B父类 的 List 均可以，这就跟java代码声明 __List\<? super B> listB__是类似的，这就是逆变。
 
 
 
@@ -97,7 +97,7 @@ __out__指的是在方法输出位置使用泛型，即作为方法(public/prote
 
 #### star-projections(\*)
 
-通配符(\*)表示__某一未知类型__，注意__不是任何类型__，类似于Java中的 ? 。对于某一(未知)特定类型的泛型，不支持 增改 操作，因为这样存在风险。
+通配符(\*)表示__某一未知类型__，注意__不是任何类型__，类似于Java中的 ? 。对于某一(未知)特定类型的泛型，不支持 增改 操作，因为这样是存在风险的。
 
 * 对于MutableList\<T>，MutableList<\*> 表示__某一未知__类型元素的集合，相当于MutableList<out Any?>，此时可以__get__元素，但是不能__add__元素。
 

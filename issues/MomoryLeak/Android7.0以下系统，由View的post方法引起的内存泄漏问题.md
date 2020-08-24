@@ -1,4 +1,4 @@
-###  Android7.0以下系统，由View的post方法引起的内存泄漏问题
+###  Android7.0以下系统，由View的post()方法引起的内存泄漏问题
 
 
 #### 源码/RTFSC
@@ -42,7 +42,7 @@ private void performTraversals() {
         ......
 }
 ```
-* 该Runnable最后会在__ performTraversals()__执行，我们知道该方法是在__主线程__中执行的；那么，这就存在一个问题，就是__如果我们是在非主线程post的话，那么该Runnable将一直缓存在ThreadLocal中，直到线程被销毁__
+* 该Runnable最后会在__performTraversals()__时执行，我们知道该方法是在__主线程__中执行的；那么，这就存在一个问题，就是__如果我们是在非主线程post的话，那么该Runnable将不会被执行且一直缓存在ThreadLocal中，直到线程被销毁__
 
 [android.view.ViewRootImpl$RunQueue](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-5.0.0_r2/core/java/android/view/ViewRootImpl.java)
 ```java
@@ -137,9 +137,6 @@ private void performTraversals() {
 
 * 避免Runnable持有外部引用(主要是避免以匿名内部类的方式使用Runnable)
   
-* 目前基线已提供相关辅助类【com.gala.video.lib.share.helper.GalaViewCompatHelper】帮助处理该问题
-
-* 其他相关辅助类【com.gala.video.lib.share.common.widget.compat.GalaCompatFrameLayout】......
 
 
 #### 附注

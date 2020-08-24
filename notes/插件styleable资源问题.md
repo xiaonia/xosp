@@ -1,5 +1,7 @@
 ###                                                              插件styleable资源问题
 
+当我们自定义View的时候经常也会自定属性，也就是__declare-styleable__。但是当我们尝试在插件中使用该自定义View的时候，经常会出现自定义属性未正常解析的问题。我们知道，对于插件和宿主的资源，一般的处理方式是隔离并分配不同的资源ID。然而，这个问题正是由于插件和宿主attr资源ID或者顺序不一致引起的：
+
 
 
 #### 在宿主中定义和使用styleable资源
@@ -181,20 +183,20 @@ status_t ResXMLTree::setTo(const void* data, size_t size, bool copyData)
 }
 ```
 
-由上文可知，__Android系统在解析Android binary xml文件的时候，是根据attr资源的ID进行匹配和解析__，结合开篇的例子可以推断：
+分析源码可知，__Android系统在解析Android binary xml文件的时候，是根据attr资源的ID进行匹配和解析__，结合开篇的例子可以推断：
 
 * ContentView使用宿主的styleable中的attr资源的ID进行解析
 
 * 如果子插件重新为attr资源分配资源ID
 
-这种情况产生的结果就是__该styleable(attr)资源无法被正确解析__
+那么将导致__该styleable(attr)资源无法被正确解析__
 
 
 
 
 #### 解决
 
-* 保持宿主和插件styleable(attr)资源__ID和顺序__一致
+* 保持宿主和插件styleable(attr)资源__ID和顺序__一致，例如利用__aapt2__的__--stable-ids__参数
 * 禁止在插件中使用宿主定义的styleable资源
 * 其他待续
 

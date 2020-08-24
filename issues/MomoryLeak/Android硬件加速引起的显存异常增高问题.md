@@ -182,6 +182,7 @@ void LayerRenderer::destroyLayer(Layer* layer) {
 系统先尝试将缓存 layer，如果失败了则释放layer资源。 
 
 [LayerCache.cpp](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/libs/hwui/LayerCache.cpp)
+
 ```cpp
 bool LayerCache::put(Layer* layer) {
     if (!layer->isCacheable()) return false;
@@ -212,7 +213,7 @@ bool LayerCache::put(Layer* layer) {
 }
 ```
 
-首先会过滤掉大小超限制的layer，其次再更新LRU缓存，然后缓存该layer。
+LayerCache首先尝试过滤掉大小超限制的layer，其次再更新LRU缓存，然后缓存该layer。
 
 
 #### 附：显存复用过程
@@ -317,7 +318,7 @@ Layer* LayerCache::get(RenderState& renderState, const uint32_t width, const uin
         }
     }
 ```
-页面退出或者不可见的时候，会调用ViewRootImpl的destroyHardwareResources方法，清除HardwareResources，包括显存。
+页面退出或者不可见的时候，会调用ViewRootImpl的destroyHardwareResources方法，清除HardwareResources。
 
 [ThreadedRenderer.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/ThreadedRenderer.java)
 ```java

@@ -2,7 +2,7 @@
 
 
 
-#### 参考文件
+#### 相关链接
 
 [android_util_AssetManager.cpp](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-5.0.0_r1/core/jni/android_util_AssetManager.cpp)
 
@@ -240,7 +240,7 @@ bool AssetManager::appendPathToResTable(const asset_path& ap) const {
 
 appendPathToResTable方法是加载(解析)资源文件的入口，其中asset_path对象里的idmap实际上保存的是idmapPath，因此 _appendPathToResTable()_ 方法首先尝试加载该idmap文件，然后再通过 _ResTable::add()_ 方法去加载resource文件。_ResTable::add()_ 方法经过一系列预处理(头部解析)之后，最后会调用 _ResTable::parsePackage()_ 方法解析完整的resource文件(包括解析idmap文件)。
 
-__idmap是根据新旧资源(overlay)生成的id映射表__：_详情可参考 libs/androidfw/ResourceTypes.cpp#ResTable::createIdmap() _。
+__idmap是根据新旧资源(overlay)生成的id映射表__：详情可参考_libs/androidfw/ResourceTypes.cpp#ResTable::createIdmap() _。
 
 * 在加载新资源的时候，通过这个表可以将新资源的entryList加载到旧资源对应的typeIndex上，因为上层代码使用的是旧资源的resId，需要根据旧资源的packageId和typeId查找。
 

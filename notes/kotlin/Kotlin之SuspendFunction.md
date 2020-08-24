@@ -1,4 +1,4 @@
-###  Kotlin之SuspendFunction
+###  Kotlin之Suspend Function
 
 
 
@@ -10,6 +10,8 @@ kotlin的__suspend__方法是kotlin协程的核心，任何一个方法以__susp
 
 #### compile
 
+Kotlin代码：
+
 ```kotlin
 suspend fun testSuspend1(value: Any?) {
     println("before testSuspend2")
@@ -18,6 +20,7 @@ suspend fun testSuspend1(value: Any?) {
 }
 ```
 
+编译之后的Java代码：
 ```java
  public static final Object testSuspend1(@Nullable Object value, @NotNull Continuation $completion) {
       Object $continuation = new ContinuationImpl($completion) {
@@ -99,7 +102,7 @@ __Continuation__是__suspend__方法挂起之后恢复执行的回调，也是ko
 
 #### ContinuationImpl
 
-__ContinuationImpl__继承自__BaseContinuationImpl__，从上文反编译的代码可以看到，每一个上级__suspend__方法传递进来的__Continuation__都会被封装保存到__ContinuationImpl__中，通过__ContinuationImpl__来控制__suspend__方法恢复(回调)逻辑。
+__ContinuationImpl__继承自__BaseContinuationImpl__，从上文编译之后的代码可以看到，每一个上级__suspend__方法传递进来的__Continuation__都会被封装保存到__ContinuationImpl__中，通过__ContinuationImpl__来控制__suspend__方法恢复(回调)逻辑。
 
 
 #### BaseContinuationImpl
