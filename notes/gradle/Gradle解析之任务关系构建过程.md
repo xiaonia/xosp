@@ -1,16 +1,17 @@
-
 ####              Gradle任务关系构建浅析 
 
 
-#####  1  DefaultGradleLauncher
+#### 从头讲起
 
-[org.gradle.initialization.DefaultGradleLauncher]()
+#####  TaskNameResolvingBuildConfigurationAction
 
-##### 2  GradleScopeServices
+[org.gradle.initialization.DefaultGradleLauncher]() 
 
-[org.gradle.internal.service.scopes.GradleScopeServices]()
+略
 
-##### 3  TaskNameResolvingBuildConfigurationAction
+[org.gradle.internal.service.scopes.GradleScopeServices]() 
+
+略
 
 [org.gradle.execution.TaskNameResolvingBuildConfigurationAction]()
 
@@ -33,52 +34,17 @@
     }
 ```
 
-__TaskNameResolvingBuildConfigurationAction__解析命令参数，搜集需要执行的task，并调用__addEntryTasks__添加到__taskGraph__中。
+__TaskNameResolvingBuildConfigurationAction__ 解析命令参数，搜集需要执行的 task，并调用 __addEntryTasks __ 添加到 __taskGraph__ 中。
 
-##### 4  DefaultGradle
+这个 __taskGraph__ 就是 __DefaultTaskExecutionGraph__，详情参考：
+
+[Gradle解析之深入理解ServiceRegistry]()
 
 [org.gradle.invocation.DefaultGradle]()
 
-```java
-    @Inject
-    @Override
-    public TaskExecutionGraphInternal getTaskGraph() {
-        throw new UnsupportedOperationException();
-    }
-```
-
-参考[Gradle运行体系之ServiceRegistry]()
-
-
-
-#####  5  GradleScopeServices
-
 [org.gradle.internal.service.scopes.GradleScopeServices]()
 
-```java
-TaskExecutionGraphInternal createTaskExecutionGraph(
-        PlanExecutor planExecutor,
-        List<NodeExecutor> nodeExecutors,
-        BuildOperationExecutor buildOperationExecutor,
-        ListenerBuildOperationDecorator listenerBuildOperationDecorator,
-        ResourceLockCoordinationService coordinationService,
-        GradleInternal gradleInternal,
-        TaskNodeFactory taskNodeFactory,
-        TaskDependencyResolver dependencyResolver,
-        ListenerBroadcast<TaskExecutionListener> taskListeners,
-        ListenerBroadcast<TaskExecutionGraphListener> graphListeners,
-        ProjectStateRegistry projectStateRegistry,
-        ServiceRegistry gradleScopedServices
-    ) {
-        return new DefaultTaskExecutionGraph(planExecutor, nodeExecutors, buildOperationExecutor, listenerBuildOperationDecorator, coordinationService, gradleInternal, taskNodeFactory, dependencyResolver, graphListeners, taskListeners, projectStateRegistry, gradleScopedServices);
-}
-```
-
-参考[Gradle运行体系之ServiceRegistry]()
-
-
-
-##### 6  DefaultTaskExecutionGraph
+#### DefaultTaskExecutionGraph
 
 [org.gradle.execution.taskgraph.DefaultTaskExecutionGraph]()
 
@@ -97,12 +63,10 @@ TaskExecutionGraphInternal createTaskExecutionGraph(
 
         executionPlan.addEntryTasks(taskSet);
         graphState = GraphState.DIRTY;
-
-        LOGGER.debug("Timing: Creating the DAG took " + clock.getElapsed());
     }
 ```
 
-##### 7  DefaultExecutionPlan
+####  DefaultExecutionPlan
 
 [org.gradle.execution.plan.DefaultExecutionPlan]()
 
@@ -135,6 +99,7 @@ TaskExecutionGraphInternal createTaskExecutionGraph(
                 // node in the queue
                 // Make sure it has been configured
                 node.prepareForExecution();
+                // 解析任务依赖关系
                 node.resolveDependencies(dependencyResolver, targetNode -> {
                     if (!visiting.contains(targetNode)) {
                         queue.addFirst(targetNode);
@@ -153,17 +118,19 @@ TaskExecutionGraphInternal createTaskExecutionGraph(
 ```
 
 
-##### 8  LocalTaskNode
+#### LocalTaskNode
 
 [org.gradle.execution.plan.LocalTaskNode]()
 
 ```java
         @Override
     public void resolveDependencies(TaskDependencyResolver dependencyResolver, Action<Node> processHardSuccessor) {
+        // dependsOn
         for (Node targetNode : getDependencies(dependencyResolver)) {
             addDependencySuccessor(targetNode);
             processHardSuccessor.execute(targetNode);
         }
+        // finalizedBy
         for (Node targetNode : getFinalizedBy(dependencyResolver)) {
             if (!(targetNode instanceof TaskNode)) {
                 throw new IllegalStateException("Only tasks can be finalizers: " + targetNode);
@@ -171,22 +138,23 @@ TaskExecutionGraphInternal createTaskExecutionGraph(
             addFinalizerNode((TaskNode) targetNode);
             processHardSuccessor.execute(targetNode);
         }
+        // mustRunAfter
         for (Node targetNode : getMustRunAfter(dependencyResolver)) {
             addMustSuccessor((TaskNode) targetNode);
         }
+        // shouldRunAfter
         for (Node targetNode : getShouldRunAfter(dependencyResolver)) {
             addShouldSuccessor(targetNode);
         }
     }
     ......
+    
     private Set<Node> getDependencies(TaskDependencyResolver dependencyResolver) {
         return dependencyResolver.resolveDependenciesFor(task, task.getTaskDependencies());
     }
 ```
 
-
-
-#####  9  AbstractTask
+####  AbstractTask
 
 [org.gradle.api.internal.AbstractTask]()
 
@@ -219,10 +187,9 @@ TaskExecutionGraphInternal createTaskExecutionGraph(
     }
 ```
 
-__getTaskDependencies()__不仅包含显示指定的任务依赖(dependsOn)，也包括隐式依赖如 @Input 标注的成员函数或者成员变量。
+__getTaskDependencies()__ 不仅包含显示指定的任务依赖(__dependsOn__)，也包括隐式依赖如 __@Input__ 标注的成员函数或者成员变量。
 
-
-#####  10  DefaultTaskInputs
+####  DefaultTaskInputs
 
 [org.gradle.api.internal.tasks.DefaultTaskInputs]()
 
@@ -244,7 +211,7 @@ __getTaskDependencies()__不仅包含显示指定的任务依赖(dependsOn)，�
     }
 ```
 
-#####  11  TaskDependencyResolver
+####  TaskDependencyResolver
 
 [org.gradle.execution.plan.TaskDependencyResolver]()
 
@@ -254,7 +221,7 @@ __getTaskDependencies()__不仅包含显示指定的任务依赖(dependsOn)，�
     }
 ```
 
-#####  12  CachingTaskDependencyResolveContext
+####  CachingTaskDependencyResolveContext
 
 [org.gradle.api.internal.tasks.CachingTaskDependencyResolveContext]()
 
@@ -273,7 +240,7 @@ __getTaskDependencies()__不仅包含显示指定的任务依赖(dependsOn)，�
     }
 ```
 
-##### 13  CachingDirectedGraphWalker
+####  CachingDirectedGraphWalker
 
 [org.gradle.internal.graph.CachingDirectedGraphWalker]()
 
@@ -285,7 +252,7 @@ __getTaskDependencies()__不仅包含显示指定的任务依赖(dependsOn)，�
     }
 ```
 
-##### 14  CachingTaskDependencyResolveContext$TaskGraphImpl
+####  CachingTaskDependencyResolveContext$TaskGraphImpl
 
 [org.gradle.api.internal.tasks.CachingTaskDependencyResolveContext$TaskGraphImpl]()
 
@@ -306,7 +273,7 @@ __getTaskDependencies()__不仅包含显示指定的任务依赖(dependsOn)，�
 
 ```
 
-##### 15  TaskDependencyContainer
+####  TaskDependencyContainer
 
 [org.gradle.api.internal.tasks.TaskDependencyContainer]()
 ```java
@@ -355,10 +322,10 @@ public interface TaskDependencyContainer {
     }
 ```
 
-__DirectoryProperty__继承自__TaskDependencyContainer__，因此该类型的 @Input 也会在构建任务依赖关系的时候被解析到，而这个__producer__是在Task实例化的时候绑定的，详细可参考[Gradle任务创建过程浅析]()
+__DirectoryProperty __继承自 __TaskDependencyContainer__，因此该类型的 __@Input__ 也会在构建任务依赖关系的时候被解析到，而这个 __producer__ 是在 Task 实例化的时候绑定的，详细可参考 [Gradle任务创建过程浅析]()
 
 
-##### 16  Buildable
+####  Buildable
 
 [org.gradle.api.tasks.TaskDependency.Buildable]()
 
@@ -417,7 +384,7 @@ public interface Buildable {
         return true;
     }
 ```
-__DefaultConfigurableFileCollection__既继承自__TaskDependencyContainer__，也继承自__Buildable__，因此毫无疑问，它所代表的的 @Input 也会在构建任务依赖关系的时候被解析到。
+__DefaultConfigurableFileCollection__ 既继承自 __TaskDependencyContainer__，也继承自 __Buildable__，因此毫无疑问，它所代表的的 __@Input__ 也会在构建任务依赖关系的时候被解析到。
 
 
 

@@ -68,9 +68,9 @@
     }
 ```
 
-* 创建或者获取已创建的__Producers__
-* 创建并注册的__Producer__
-* 配置__ConfigureAction__，这个action在任务创建的时候执行，如果已创建则立即执行
+* 创建或者获取已创建的 __Producers__
+* 创建并注册的 __Producer__
+* 配置 __ConfigureAction__，这个 action 在任务创建的时候执行，如果已创建则立即执行
 
 
 
@@ -161,9 +161,9 @@
     }
 ```
 
-* 创建或者获取已创建的__Producers__
+* 创建或者获取已创建的 __Producers__
 
-* 调用并返回__injectable__，__injectable__会触发__Producer__的__resolve()__方法，该方法主要是配置及初始化文件夹路径
+* 调用并返回 __injectable__，__injectable__ 会触发 __Producer__ 的 __resolve()__ 方法，该方法主要是配置及初始化文件夹路径
 
 
 
@@ -237,11 +237,11 @@ private class TaskAction<T: Task>(
 
 执行顺序：
 
-* 创建__TaskProvider__
+* 创建 __TaskProvider__
 
-* 执行__CreationAction.handleProvider(taskProvider)__
+* 执行 __CreationAction.handleProvider(taskProvider)__
 
-* 调用__TaskProvider.get()__，触发创建__Task__，参考 [Gradle任务创建过程浅析]()
+* 调用 __TaskProvider.get()__，触发创建 __Task__，参考 [Gradle任务创建过程浅析]()
 
-* Task创建之后执行__CreationAction.configure(task)__
+* Task创建之后执行 __CreationAction.configure(task)__
 

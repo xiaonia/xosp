@@ -4,7 +4,7 @@
 
 我们知道，Groovy 和 Java 一样是运行在 JVM上 的，而且 Groovy 代码最终也是编译成 Java 字节码；但是 Groovy 却是一门动态语言，可以在运行时扩展程序，比如动态调用（拦截、注入、合成）方法，那么 Groovy 是如何实现这一切的呢？
 
-#### 初探
+#### 动态调用入口：CallSite
 
 其实这一切都要归功于 Groovy 编译器，Groovy 编译器在编译 Groovy 代码的时候，并不是像 Java 一样，直接编译成字节码，而是编译成 “__动态调用的字节码__”。
 
@@ -180,9 +180,9 @@ PogoMetaClassSite 内部的逻辑比较简单，可以看出，方法调用逻�
 
 看到这里，其实我们已经可以看出 Groovy 实现动态特性的基本原理了：__经过 Groovy 编译器编译之后，所有的方法调用都会通过 Groovy 构建的系统进行调用，而这个系统正是实现其动态特性的关键。__
 
-接下来，我们更进一步，分析一下MetaClass是如何分发方法调用的：
+接下来，我们更进一步，分析一下 MetaClass 是如何分发方法调用的：
 
-#### MetaClassImpl
+#### MetaClassImpl方法分发过程
 
 ##### invokeMethod
 
@@ -417,7 +417,7 @@ invokeMissingMethod(...) 方法的调用过程如下，__如果调用的是 this
 
 至此，我们已经完整的分析了方法查找和分发的流程，也看到了__Category __和 __MixIn__ 注入的方法是如何被调用到的。那么 Groovy 又是如何将 MetaClass 和类或者实例绑定在一起的呢？
 
-#### MetaClass
+#### MetaClass的初始化过程
 
 首先，我们来分析一下 MetaClass 从创建到初始化的过程，以 GroovyObjectSupport 这个官方基类为例：
 
@@ -580,7 +580,9 @@ MetaClassImpl 在初始化的时候就会通过反射解析目标类及其父类
 至此，我们已经讲完了 MetaClassImpl 从创建到初始化的过程。但是还有几个问题没有弄清楚，比如 Groovy 官方提供的方法（例如use方法）是如何注入的呢？以及 ExtensionModule 又是如何注入的？
 
 
-#### MetaClassRegistryImpl
+#### Groovy系统方法的初始化过程
+
+##### MetaClassRegistryImpl
 
 我们不妨先来看一下 MetaClassRegistryImpl 在初始化的时候都做了什么？
 
@@ -719,7 +721,9 @@ MetaClassRegistryImpl 在其实例化的时候就会通过 __registerMethods(...
 * 最后，__通过 ExtensionModuleScanner 加载默认的 ExtensionModule 方法__
 
 
-#### ExpandoMetaClass
+#### 动态注入原理：ExpandoMetaClass
+
+##### ExpandoMetaClass
 
 上文我们提到类或者实例默认绑定的 MetaClass 是 MetaClassImpl 类型的实例，但是事实上，__当我们通 metaClass 注入方法的时候，其实是通过 ExpandoMetaClass 注入的__，我们不妨简单看一下 ExpandoMetaClass 的代码：
 
@@ -763,7 +767,59 @@ public class ExpandoMetaClass extends MetaClassImpl implements GroovyObject {
         }
         return super.invokeStaticMethod(object, methodName, arguments);
     }
+    
     ...... 
+    // 动态注入方法
+    public void setProperty(String property, Object newValue) {
+        if (newValue instanceof Closure) {
+            if (property.equals(CONSTRUCTOR)) {
+                property = GROOVY_CONSTRUCTOR;
+            }
+            Closure callable = (Closure) newValue;
+            final List<MetaMethod> list = ClosureMetaMethod.createMethodList(property, theClass, callable);
+            for (MetaMethod method : list) {
+                // here we don't care if the method exists or not we assume the
+                // developer is responsible and wants to override methods where necessary
+                // 注册绑定类实例方法
+                registerInstanceMethod(method);
+            }
+        } else {
+            registerBeanProperty(property, newValue);
+        }
+    }
+    
+    ......
+    // 动态注入方法
+     public Object invokeMethod(String name, Object args) {
+        final Object[] argsArr = args instanceof Object[] ? (Object[]) args : new Object[]{args};
+        MetaMethod metaMethod = myMetaClass.getMetaMethod(name, argsArr);
+        if (metaMethod != null) {
+            // we have to use doMethodInvoke here instead of simply invoke,
+            // because getMetaMethod may provide a method that can not be called
+            // without further argument transformation, which is done only in 
+            // doMethodInvoke
+            return metaMethod.doMethodInvoke(this, argsArr);
+        }
+
+        if (argsArr.length == 2 && argsArr[0] instanceof Class && argsArr[1] instanceof Closure) {
+            if (argsArr[0] == theClass)
+                // 注册绑定类的实例方法
+                registerInstanceMethod(name, (Closure) argsArr[1]);
+            else {
+                // 注册Subclass实例方法
+                registerSubclassInstanceMethod(name, (Class) argsArr[0], (Closure) argsArr[1]);
+            }
+            return null;
+        }
+
+        if (argsArr.length == 1 && argsArr[0] instanceof Closure) {
+            registerInstanceMethod(name, (Closure) argsArr[0]);
+            return null;
+        }
+
+        throw new MissingMethodException(name, getClass(), argsArr);
+    }
+    ......
 }
 ```
 ExpandoMetaClass 保存了动态注入的方法和属性的信息，其中包括：
@@ -784,7 +840,11 @@ ExpandoMetaClass 保存了动态注入的方法和属性的信息，其中包括
 
 另外，从 ExpandoMetaClass 的代码，我们也可以看出，__如果一个类或实例，通过 metaClass 注入了 _“invokeMethod(...)”_ 拦截方法，那么任何的方法调用都会调用该方法；__
 
-#### HandleMetaClass
+由上文可知，当我们设置属性值或者调用方法的时候，如果该属性或者方法不存在，则会调用 __setProperty(...)__ 和 __invokeMethod(...)__（注意区分是哪个invokeMethod），这条规则当然也适用于 ExpandoMetaClass。而 ExpandoMetaClass 正是利用这条规则实现动态注入方法：在调用 __setProperty(...)__ 和 __invokeMethod(...)__ 时检查参数是否是 Closure 类型的，如果是且符合其他条件，则将该 Closure 封装成 MetaMethod 并保存到方法列表中。
+
+当然 ExpandoMetaClass 实现动态注入方法的逻辑远不止如此（例如MixIn），此处不再深入分析，感兴趣的同学可以阅读 ExpandoMetaClass 源码，一探究竟。
+
+##### HandleMetaClass
 
 既然类或者实例默认绑定的 MetaClass 是 MetaClassImpl 类的实例，那么当我们通过 _metaClass_ 动态注入方法的时候，又是__如何切换到 ExpandoMetaClass 的__呢？
 
@@ -912,15 +972,15 @@ HandleMetaClass 在初始化或者调用到相关方法的时候，就会为这�
 
 因为每个类或实例所绑定的 ExpandoMetaClass 是唯一的，由此可知 __在类上动态注入的方法是全局，而在实例上动态注入的方法则是局部的__。
 
-#### Category
+#### Category实现原理
 
 略
 
-#### MixIn
+#### MixIn实现原理
 
 略
 
-#### ExtensionModule
+#### ExtensionModule实现原理
 
 接下来，我们来分析一下 ExtensionModule 是如何实现，RTFSC：
 
