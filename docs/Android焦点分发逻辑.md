@@ -1,18 +1,15 @@
 ###                                     Android焦点分发逻辑
 
-
-
 #### 引言
 
-今天，我们来简单分析一下Android系统焦点分发逻辑。首先来找找焦点分发的起点在哪里？
+今天，我们来简单分析一下Android系统焦点分发逻辑，那么焦点分发的起点在哪里呢？
 
+#### 分发起点：dispatchKeyEvent 
 
-
-#### dispatchKeyEvent 
-
-首先，让我们来看看按下遥控器的 *KEYCODE_DPAD_LEFT* 按键的时候发生了什么？我们知道整个ViewTree按键分发的起点是 _ViewRootImpl.processKeyEvent(...)_，那么 _processKeyEvent(...)_ 又是如何分发按键事件的呢？
+首先，让我们来看看按下 **KEYCODE_DPAD_LEFT** 按键的时候发生了什么？我们知道整个 ViewTree 按键分发的起点是 _ViewRootImpl.processKeyEvent(...)_，那 _processKeyEvent(...)_ 又是如何分发按键事件的呢？
 
 [ViewRootImpl.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/ViewRootImpl.java)
+
 ```java
         private int processKeyEvent(QueuedInputEvent q) {
             ......
@@ -81,26 +78,26 @@
         }
 ```
 
-为了简化代码，此处省略了部分逻辑。从源代码我们可以看出，按键事件首先会尝试分发给ViewTree去处理(此处我们不深入讨论)，如果ViewTree不做处理，那么就会进入焦点分发逻辑。就是在这里，按键事件分发转变成了焦点事件分发。
+为了简化代码，此处省略了部分逻辑。从源码我们可以看出，按键事件首先会尝试分发给 ViewTree 去处理(此处我们不深入讨论)，如果 ViewTree 不做处理，那么就会进入焦点分发逻辑。就是在这里，__按键事件分发转变成了焦点事件分发__。
 
 * 首先，根据不同的按键事件转变为不同焦点分发事件，例如 _KEYCODE_DPAD_LEFT_ 转变为 _FOCUS_LEFT_。
 
 * 接着，尝试查找当前已获焦的View，如果存在获焦的View，就调用这个View的 *__focusSearch(...)__*  方法查找下一个获焦的View：
 
-    * 如果找到下一个获焦的View，且该View不是当前已获焦的View，那么就计算当前已获焦View的获焦区域(并通过坐标变换计算出这个区域相对于下一个获焦View的位置)，然后调用 *__requestFocus(...)__*。
+    * 如果找到下一个获焦的View，且该View不是当前已获焦的View，那么就计算当前已获焦View的获焦区域(并通过坐标变换计算出这个区域相对于下一个获焦View的位置)，然后调用 *__requestFocus(...)__* 移动焦点。
 
-    * 如果没有找到下一个获焦View，或者找到的View就是当前已获焦的View，或者找到下一个获焦的View但requestFocus失败了，那么就调用 *__dispatchUnhandledMove(...)__* 做最后的善后处理。所以，__我们可以考虑在这个方法里面处理边界View的回弹效果__。
+    * 如果没有找到下一个获焦View，或者找到的View就是当前已获焦的View，或者找到下一个获焦的View但requestFocus 失败了，那么就调用 *__dispatchUnhandledMove(...)__* 做最后的善后处理。因此，__可以在这个方法里面处理边界 View 的回弹效果__。
 
-* 如果当前不存在已获焦的View，那么就调用 _ViewRootImpl_ 的 _focusSearch(...)_ 方法。当然，在这种场景下，查找的原点默认是屏幕左上角或者右下角。
+* 如果当前不存在已获焦的View，那么就直接调用 _ViewRootImpl_ 的 _focusSearch(...)_ 方法。当然，在这种场景下，查找的原点默认是屏幕左上角或者右下角。
 
 PS: 对  _focusSearch(...)_ 方法感兴趣的，可以移步[Android焦点搜索逻辑](./Android焦点搜索逻辑.md)，此处我们先略过。
 
-
-
-
-#### requestFocus
+#### 移动焦点：
 
 接下来，我们来看一下 _requestFocus(...)_ 方法是如何处理焦点移动的：
+
+##### requestFocus
+
 [View.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/View.java)
 
 ```java
@@ -130,10 +127,10 @@ PS: 对  _focusSearch(...)_ 方法感兴趣的，可以移步[Android焦点搜�
 
 _View_ 的 _requestFocus(...)_ 方法直接调用 _requestFocusNoSearch(...)_ 方法，而 _requestFocusNoSearch(...)_ 方法的逻辑是：
 
-如果该View可获焦且没有被上级ViewGroup拦截，则调用 _handleFocusGainInternal(...)_ 方法将焦点分发给该View。
-
+* 如果该 View 可获焦且没有被上级 ViewGroup 拦截，则调用 _handleFocusGainInternal(...)_ 方法将焦点分发给该View。
 
 [ViewGroup.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/ViewGroup.java)
+
 ```java
     @Override
     public boolean requestFocus(int direction, Rect previouslyFocusedRect) {
@@ -161,13 +158,13 @@ _View_ 的 _requestFocus(...)_ 方法直接调用 _requestFocusNoSearch(...)_ �
     }
 ```
 
-正如 _ViewGroup_ 的 _addFocusables(...)_ 方法一样，_ViewGroup_ 的 _requestFocus(...)_ 方法也与 _descendantFocusability_ 值有关：
+正如 _ViewGroup_ 的 _addFocusables(...)_ 方法一样，_ViewGroup_ 的 _requestFocus(...)_ 方法也与 __descendantFocusability__ 有关：
 
-* __FOCUS_BLOCK_DESCENDANTS__：仅尝试将焦点分发给当前 _ViewGroup_
+* __FOCUS_BLOCK_DESCENDANTS __：仅尝试将焦点分发给当前 _ViewGroup_
 
-* __FOCUS_BEFORE_DESCENDANTS__：先尝试将焦点分发给当前 _ViewGroup_，然后才尝试将焦点分发给ChildView。
+* __FOCUS_BEFORE_DESCENDANTS__ ：先尝试将焦点分发给当前 _ViewGroup_，然后才尝试将焦点分发给ChildView。
 
-* __FOCUS_AFTER_DESCENDANTS__：先尝试将焦点分发给ChildView，然后才尝试将焦点分发给当前 _ViewGroup_。
+* __FOCUS_AFTER_DESCENDANTS__ ：先尝试将焦点分发给ChildView，然后才尝试将焦点分发给当前 _ViewGroup_。
 
 ```java
     protected boolean onRequestFocusInDescendants(int direction,
@@ -198,11 +195,9 @@ _View_ 的 _requestFocus(...)_ 方法直接调用 _requestFocusNoSearch(...)_ �
     }
 ```
 
-_onRequestFocusInDescendants(...)_ 尝试按顺序将焦点分发给ChildView。因此，我们__也可以通过覆写这两个方法来实现自定义焦点分发逻辑__。
+_onRequestFocusInDescendants(...)_ 尝试按顺序将焦点分发给 ChildView。因此，__可以通过覆写这两个方法来实现自定义焦点分发逻辑__。
 
-
-
-#### handleFocusGainInternal
+##### handleFocusGainInternal
 
 ```java
     /**
@@ -227,13 +222,13 @@ _onRequestFocusInDescendants(...)_ 尝试按顺序将焦点分发给ChildView。
         }
     }
 ```
-_handleFocusGainInternal(...)_ 方法先检查当前View是否已获焦，如果已获焦则不做处理；如果未获焦，则：
+_handleFocusGainInternal(...)_ 方法先检查当前 View 是否已获焦，如果已获焦则不做处理；如果未获焦，则：
 
 * 设置获焦状态 PFLAG_FOCUSED
 
 * 层层往上调用 _requestChildFocus(...)_ 方法，通知 _mParent_ 焦点变化事件
 
-* 调用 _dispatchOnGlobalFocusChange(...)_ 方法，通知ViewTreeObserver焦点变化事件
+* 调用 _dispatchOnGlobalFocusChange(...)_ 方法，通知 ViewTreeObserver 焦点变化事件
 
 * 调用 _onFocusChanged(...)_ 方法，通知当前View焦点变化事件
 
@@ -273,15 +268,14 @@ _handleFocusGainInternal(...)_ 方法先检查当前View是否已获焦，如果
     }
 ```
 
-但是我们看到 _onFocusChanged(...)_ 方法并没有做什么特别处理，那原来获焦的那个View怎么办？它又是如何知道自己失去焦点了呢？
+但是我们看到 _onFocusChanged(...)_ 方法并没有做什么特别处理，那原来获焦的那个 View 怎么办？它又是如何知道自己失去焦点了呢？
 
-既然 _onFocusChanged(...)_ 方法没有做处理，那么我们不妨来看看是不是 _mParent.requestChildFocus(...)_ 这个方法做处理了。
+既然 _onFocusChanged(...)_ 方法没有做处理，那么我们不妨来看看是不是 _mParent.requestChildFocus(...)_ 这个方法做处理了:
 
-
-
-#### requestChildFocus
+##### requestChildFocus
 
 [ViewGroup.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/ViewGroup.java)
+
 ```java
     public void requestChildFocus(View child, View focused) {
         if (DBG) {
@@ -318,11 +312,11 @@ _handleFocusGainInternal(...)_ 方法先检查当前View是否已获焦，如果
 ```
 _requestChildFocus(...)_ 方法的处理逻辑：
 
-*  如果descendantFocusability的值等于FOCUS_BLOCK_DESCENDANTS，则说明拦截了ChildView的获焦事件，此时我们不需要继续向上一层级透传。
+*  如果 descendantFocusability 的值等于FOCUS_BLOCK_DESCENDANTS，则说明拦截了ChildView的获焦事件，此时我们不需要继续向上一层级透传。
 
-* 调用 _super.unFocus(...)_ 方法清除当前ViewGroup的焦点(如果当前ViewGroup是原来获焦的View)
+* 调用 _super.unFocus(...)_ 方法清除当前 ViewGroup 的焦点(如果当前 ViewGroup 是原来获焦的View)
 
-* 如果原来获焦的是当前ViewGroup的ChildView，则调用 _mFocused.unFocus(...)_ 方法清除其焦点
+* 如果原来获焦的是当前 ViewGroup 的 ChildView，则调用 _mFocused.unFocus(...)_ 方法清除其焦点
 
 * 调用 _mParent.requestChildFocus(...)_ 方法透传通知上一层级焦点变化事件 
 
@@ -344,6 +338,8 @@ __因此，当ChildView获得焦点的时候，ParentView都可以通过 *reques
 ```
 
 我们接着往下看 _unFocus(...)_ 方法是如何清除焦点的：
+
+##### unFocus
 
 [View.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/View.java)
 ```java
@@ -368,6 +364,7 @@ __因此，当ChildView获得焦点的时候，ParentView都可以通过 *reques
         }
     }   
 ```
+
 可以看到 _unFocus(...)_ 方法是直接调用 _clearFocusInternal(...)_ 方法尝试清除当前View的获焦状态。
 _clearFocusInternal(...)_ 方法先检查当前View是否已获焦，如果未获焦则无需处理，如果当前View已获焦，则：
 
@@ -381,24 +378,11 @@ _clearFocusInternal(...)_ 方法先检查当前View是否已获焦，如果未�
 
 * 如果refocus为true，则调用 _rootViewRequestFocus(...)_ 方法重新分发焦点。
 
-__因此，当ChildView失去焦点的时候，ParentView都可以通过 *clearChildFocus(...)* 方法接收到焦点清除事件，如图所示：__
+#### 清除焦点
 
-```java
+那什么时候需要重新分发焦点呢？__当我们调用手动 clearFocus() 清除焦点 或者 获焦的 View 被移除(隐藏不可见)的时候，就需要重新分发焦点__：
 
-                               *  ViewRootImpl
-                             /       
-                            * clearChildFocus
-                          /   
-                         * clearChildFocus 
-                       /   \
-                      *     * clearChildFocus
-                    /         \
-                   *           * unFocus
-                 /
-                *                         
-```
-
-那什么时候需要重新分发焦点呢？__当我们调用手动clearFocus()宣布放弃获焦 或者 获焦的View被移除(隐藏不可见)的时候，就需要重新分发焦点__：
+##### clearFocus
 
 ```java
 
@@ -422,11 +406,28 @@ __因此，当ChildView失去焦点的时候，ParentView都可以通过 *clearC
         return root != null && root.requestFocus();
     }
 ```
+__因此，当 ChildView 失去焦点的时候，ParentView 都可以通过 *clearChildFocus(...)* 方法接收到焦点清除事件，如图所示：__
 
+```java
 
-#### focusableViewAvailable
+                               *  ViewRootImpl
+                             /       
+                            * clearChildFocus
+                          /   
+                         * clearChildFocus 
+                       /   \
+                      *     * clearChildFocus
+                    /         \
+                   *           * clearFocus
+                 /
+                *                         
+```
 
-_focusableViewAvailable(...)_ 是google官方提供的实时初始化焦点或者校正焦点的机制：简单的说，当一个View变为可获焦的状态之后，就会通过 _focusableViewAvailable(...)_ 层层透传至 _ViewRootImpl_，由 _ViewRootImpl_ 来初始化焦点或者校正焦点。
+#### 校正焦点
+
+##### focusableViewAvailable
+
+_focusableViewAvailable(...)_ 是官方提供的实时初始化焦点或者校正焦点的机制：简单的说，当一个View 变为可获焦的状态之后，就会通过 _focusableViewAvailable(...)_ 层层透传至 _ViewRootImpl_，由 _ViewRootImpl_ 来初始化焦点或者校正焦点。
 
 [View.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/View.java)
 ```java
@@ -507,9 +508,9 @@ _View_ 类中的 _setFlags(...)_ 方法中检查可获焦状态或者可见状�
 ```
 _ViewGroup_ 类中的 _focusableViewAvailable(...)_ 负责检查并向上一层级透传，直至 _ViewRootImpl_。这里我们看到有几种条件下是不往上透传的：
 
-* ParentView设置 _descendantFocusability_ 值为 _FOCUS_BLOCK_DESCENDANTS_，即拦截ChildView获焦。
+* ParentView 设置 _descendantFocusability_ 值为 _FOCUS_BLOCK_DESCENDANTS_，即拦截ChildView 获焦。
 
-* ParentView设置 _descendantFocusability_ 值不为 _FOCUS_AFTER_DESCENDANTS_ 且 ParentView 处于获焦状态，因为这个状态下无需校正焦点。
+* ParentView 设置 _descendantFocusability_ 值不为 _FOCUS_AFTER_DESCENDANTS_ 且 ParentView 处于获焦状态，因为这个状态下无需校正焦点。
 
 [ViewRootImpl.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/ViewRootImpl.java)
 ```java
@@ -538,16 +539,12 @@ _ViewGroup_ 类中的 _focusableViewAvailable(...)_ 负责检查并向上一层�
 
 _ViewRootImpl_ 类中的 _focusableViewAvailable(...)_ 方法：
 
-* 如果当前不存在焦点，则直接尝试将焦点分发给这个可获焦的View；
+* 如果当前不存在焦点，则直接尝试将焦点分发给这个可获焦的 View
 
-* 如果存在焦点，则检查是否需要将焦点转移到这个可获焦的View。
+* 如果存在焦点，则检查是否需要将焦点转移到这个可获焦的 View
 
-那么什么情况下需要将焦点转移给这个可获焦的View呢？如果当前获焦的ViewGroup是这个可获焦的View的上级节点，且其descendantFocusability值为 _FOCUS_AFTER_DESCENDANTS_，则会尝试将焦点分发给这个可获焦的View。
+那么什么情况下需要将焦点转移给这个可获焦的 View 呢？如果当前获焦的 ViewGroup 是这个可获焦的 View 的上级节点，且其 descendantFocusability 值为 _FOCUS_AFTER_DESCENDANTS_，则会尝试将焦点分发给这个可获焦的View。
 
-__也就是说 *focusableViewAvailable(...)* 这个方法一方面负责处理焦点初始化的逻辑，另一方面也会实时校正 *FOCUS_AFTER_DESCENDANTS* 的View的焦点分发__。
+__也就是说 *focusableViewAvailable(...)* 这个方法一方面负责处理焦点初始化的逻辑，另一方面也会实时校正 *FOCUS_AFTER_DESCENDANTS* 的 ViewGroup 的焦点分发__。
 
-这是因为 *FOCUS_AFTER_DESCENDANTS* 表示的是ChildView优先获焦，如果因为ChildView不可获焦而让ParentView先获焦了，当ChildView变为可获焦了，则ParentView应当及时将焦点转移给ChildView。
-
-
-
-
+这是因为 *FOCUS_AFTER_DESCENDANTS* 表示的是 ChildView 优先获焦，如果因为 ChildView 不可获焦而让 ParentView 先获焦了，当 ChildView 变为可获焦了，则 ParentView 应当及时将焦点转移给 ChildView。

@@ -1,17 +1,84 @@
-####              Gradle任务关系构建浅析 
+#### Gradle之Task依赖构建浅析 
 
 
-#### 从头讲起
 
-#####  TaskNameResolvingBuildConfigurationAction
+#### Gradle的运行过程
 
 [org.gradle.initialization.DefaultGradleLauncher]() 
 
-略
+```java
+    // 五个阶段
+    private enum Stage {
+        LoadSettings, Configure, TaskGraph, RunTasks() {
+            @Override
+            String getDisplayName() {
+                return "Build";
+            }
+        }, Finished;
+
+        String getDisplayName() {
+            return name();
+        }
+    }
+    
+    ......
+    private void runWork() {
+        if (stage != Stage.TaskGraph) {
+            throw new IllegalStateException("Cannot execute tasks: current stage = " + stage);
+        }
+
+        // 执行action
+        List<Throwable> taskFailures = new ArrayList<Throwable>();
+        buildExecuter.execute(gradle, taskFailures);
+        if (!taskFailures.isEmpty()) {
+            throw new MultipleBuildFailures(taskFailures);
+        }
+
+        stage = Stage.RunTasks;
+    }
+```
+
+在整个 gradle 运行过程中，总共包含5个阶段：LoadSettings、Configure、TaskGraph、RunTasks、Finished。而在 Configure->TaskGraph 这个阶段，就是解析并建立 DAG 任务关系依赖图的过程。我们先来看一下这个 action 是什么时候创建的：
+
+
+
+#### TaskNameResolvingBuildConfigurationAction的创建过程
+
+[org.gradle.initialization.DefaultGradleLauncherFactory]()
+
+```java
+    private DefaultGradleLauncher doNewInstance(BuildDefinition buildDefinition,
+                                                BuildState build,
+                                                @Nullable GradleLauncher parent,
+                                                BuildTreeScopeServices buildTreeScopeServices,
+                                                List<?> servicesToStop) {
+        ......
+        GradleInternal gradle = serviceRegistry.get(Instantiator.class).newInstance(DefaultGradle.class, parentBuild, startParameter, serviceRegistry.get(ServiceRegistryFactory.class));
+        ......
+        TaskExecutionPreparer taskExecutionPreparer = gradle.getServices().get(TaskExecutionPreparer.class);
+        DefaultGradleLauncher gradleLauncher = new DefaultGradleLauncher(......);
+        ......
+        return gradleLauncher;
+    }
+```
+
+由 [Gradle之ServiceRegistry浅析]() 一文我们知道，以 create 开头的方法都会被封装成 FactoryMethod，当我们调用 __getService().get(TaskExecutionPreparer.class)__ 方法时即会调用 __createTaskExecutionPreparer()__ 方法。
+
+
 
 [org.gradle.internal.service.scopes.GradleScopeServices]() 
 
-略
+```java
+    BuildConfigurationActionExecuter createBuildConfigurationActionExecuter(CommandLineTaskParser commandLineTaskParser, TaskSelector taskSelector, ProjectConfigurer projectConfigurer, ProjectStateRegistry projectStateRegistry) {
+        List<BuildConfigurationAction> taskSelectionActions = new LinkedList<BuildConfigurationAction>();
+        taskSelectionActions.add(new DefaultTasksBuildExecutionAction(projectConfigurer));
+        taskSelectionActions.add(new TaskNameResolvingBuildConfigurationAction(commandLineTaskParser));
+        return new DefaultBuildConfigurationActionExecuter(Arrays.asList(new ExcludedTaskFilteringBuildConfigurationAction(taskSelector)), taskSelectionActions, projectStateRegistry);
+    }
+```
+createTaskExecutionPreparer() 方法最后会调用 __createBuildConfigurationActionExecuter()__ 方法，这个方法会创建 TaskNameResolvingBuildConfigurationAction 并将其添加到 taskSelectionActions 中。TaskNameResolvingBuildConfigurationAction 顾名思义，就是负责解析并构建任务依赖关系的 Action：
+
+
 
 [org.gradle.execution.TaskNameResolvingBuildConfigurationAction]()
 
@@ -34,17 +101,25 @@
     }
 ```
 
-__TaskNameResolvingBuildConfigurationAction__ 解析命令参数，搜集需要执行的 task，并调用 __addEntryTasks __ 添加到 __taskGraph__ 中。
-
-这个 __taskGraph__ 就是 __DefaultTaskExecutionGraph__，详情参考：
+由源码可知：__TaskNameResolvingBuildConfigurationAction__ 先解析命令参数，搜集需要执行的 tasks，然后调用 __addEntryTasks __ 将这些 tasks 添加到 __taskGraph__ 中。这个 __taskGraph__ 就是 __DefaultTaskExecutionGraph__，详情参考：
 
 [Gradle解析之深入理解ServiceRegistry]()
 
+略
+
 [org.gradle.invocation.DefaultGradle]()
+
+略
 
 [org.gradle.internal.service.scopes.GradleScopeServices]()
 
-#### DefaultTaskExecutionGraph
+略
+
+
+
+#### 添加及解析 Task 依赖关系
+
+##### DefaultTaskExecutionGraph
 
 [org.gradle.execution.taskgraph.DefaultTaskExecutionGraph]()
 
@@ -65,8 +140,11 @@ __TaskNameResolvingBuildConfigurationAction__ 解析命令参数，搜集需要�
         graphState = GraphState.DIRTY;
     }
 ```
+DefaultTaskExecutionGraph 的 addEntryTasks() 方法稍加处理便将 tasks 添加到 executionPlan 中：
 
-####  DefaultExecutionPlan
+
+
+#####  DefaultExecutionPlan
 
 [org.gradle.execution.plan.DefaultExecutionPlan]()
 
@@ -101,6 +179,7 @@ __TaskNameResolvingBuildConfigurationAction__ 解析命令参数，搜集需要�
                 node.prepareForExecution();
                 // 解析任务依赖关系
                 node.resolveDependencies(dependencyResolver, targetNode -> {
+                    // 注意这里会尝试将依赖的任务添加到queue中，递归的解析
                     if (!visiting.contains(targetNode)) {
                         queue.addFirst(targetNode);
                     }
@@ -117,8 +196,11 @@ __TaskNameResolvingBuildConfigurationAction__ 解析命令参数，搜集需要�
     }
 ```
 
+DefaultExecutionPlan 的 addEntryTasks() 方法先将 task 封装成 TaskNode，然后调用 doAddNodes() 方法添加并解析其依赖关系。
 
-#### LocalTaskNode
+
+
+##### LocalTaskNode
 
 [org.gradle.execution.plan.LocalTaskNode]()
 
@@ -153,14 +235,17 @@ __TaskNameResolvingBuildConfigurationAction__ 解析命令参数，搜集需要�
         return dependencyResolver.resolveDependenciesFor(task, task.getTaskDependencies());
     }
 ```
+对于同一个工程的 task，这个 Node 就是 __LocalTaskNode__ 。 __LocalTaskNode__ 解析任务依赖关系的过程类似于虚拟机垃圾回收的标记过程：以 根任务 为起点，递归的遍历解析其依赖的任务，直至所有依赖的任务都被遍历解析。
 
-####  AbstractTask
+
+
+#####  AbstractTask
 
 [org.gradle.api.internal.AbstractTask]()
 
 ```java
 
-        private AbstractTask(TaskInfo taskInfo) {
+    private AbstractTask(TaskInfo taskInfo) {
         ......
         TaskContainerInternal tasks = project.getTasks();
         this.mustRunAfter = new DefaultTaskDependency(tasks);
@@ -171,6 +256,7 @@ __TaskNameResolvingBuildConfigurationAction__ 解析命令参数，搜集需要�
         PropertyWalker propertyWalker = services.get(PropertyWalker.class);
         FileCollectionFactory fileCollectionFactory = services.get(FileCollectionFactory.class);
         taskMutator = new TaskMutator(this);
+        // 隐式依赖
         taskInputs = new DefaultTaskInputs(this, taskMutator, propertyWalker, fileCollectionFactory);
         taskOutputs = new DefaultTaskOutputs(this, taskMutator, propertyWalker, fileCollectionFactory);
         taskDestroyables = new DefaultTaskDestroyables(taskMutator);
@@ -185,11 +271,96 @@ __TaskNameResolvingBuildConfigurationAction__ 解析命令参数，搜集需要�
     public TaskDependencyInternal getTaskDependencies() {
         return dependencies;
     }
+    
+    // 显式依赖
+    @Override
+    public Task dependsOn(final Object... paths) {
+        taskMutator.mutate("Task.dependsOn(Object...)", new Runnable() {
+            @Override
+            public void run() {
+                dependencies.add(paths);
+            }
+        });
+        return this;
+    }
 ```
 
-__getTaskDependencies()__ 不仅包含显示指定的任务依赖(__dependsOn__)，也包括隐式依赖如 __@Input__ 标注的成员函数或者成员变量。
+__getTaskDependencies()__ 方法返回的值，不仅包含显示指定的任务依赖(__dependsOn__)，也包括隐式依赖如 __@Input__ 标注的成员函数或者成员变量。
 
-####  DefaultTaskInputs
+
+
+#####  TaskDependencyResolver
+
+[org.gradle.execution.plan.TaskDependencyResolver]()
+
+```java
+    public Set<Node> resolveDependenciesFor(@Nullable TaskInternal task, Object dependencies) {
+        return context.getDependencies(task, dependencies);
+    }
+```
+
+[org.gradle.api.internal.tasks.CachingTaskDependencyResolveContext]()
+
+```java
+    public Set<T> getDependencies(@Nullable Task task, Object dependencies) {
+        this.task = task;
+        try {
+            walker.add(dependencies);
+            return walker.findValues();
+        } catch (Exception e) {
+            throw new TaskDependencyResolveException(...);
+        } finally {
+            queue.clear();
+            this.task = null;
+        }
+    }
+```
+
+[org.gradle.internal.graph.CachingDirectedGraphWalker]()
+
+```java
+    private Set<T> doSearch() {
+        ......
+          graph.getNodeValues(node, details.values, details.successors);
+        ......
+    }
+```
+
+[org.gradle.api.internal.tasks.CachingTaskDependencyResolveContext$TaskGraphImpl]()
+
+```java
+        @Override
+        public void getNodeValues(Object node, final Collection<? super T> values, Collection<? super Object> connectedNodes) {
+            if (node instanceof TaskDependencyContainer) {
+                TaskDependencyContainer taskDependency = (TaskDependencyContainer) node;
+                queue.clear();
+                taskDependency.visitDependencies(CachingTaskDependencyResolveContext.this);
+                connectedNodes.addAll(queue);
+            } else if (node instanceof Buildable) {
+                Buildable buildable = (Buildable) node;
+                connectedNodes.add(buildable.getBuildDependencies());
+            } 
+            ......
+        }
+```
+
+TaskDependencyResolver 最后是通过 TaskGraphImpl 的 getNodeValues() 方法解析依赖关系：
+
+* 对于 TaskDependencyContainer，通过调用 visitDependencies() 方法解析
+* 对于 Buildable，通过调用 getBuildDependencies() 方法解析
+* 对于其他类型，则委托给 workResolvers 进行处理
+
+
+
+#### 显式依赖的解析过程
+
+略
+
+
+
+#### 隐式依赖的解析过程
+
+#####  DefaultTaskInputs
 
 [org.gradle.api.internal.tasks.DefaultTaskInputs]()
 
@@ -211,69 +382,13 @@ __getTaskDependencies()__ 不仅包含显示指定的任务依赖(__dependsOn__)
     }
 ```
 
-####  TaskDependencyResolver
+DefaultTaskInputs 类继承自 TaskDependencyContainer 类，因此会通过调用 visitDependencies() 方法解析其依赖关系，而 visitDependencies() 方法则会遍历并解析 @Input 注解标记的属性。
 
-[org.gradle.execution.plan.TaskDependencyResolver]()
 
-```java
-    public Set<Node> resolveDependenciesFor(@Nullable TaskInternal task, Object dependencies) {
-        return context.getDependencies(task, dependencies);
-    }
-```
 
-####  CachingTaskDependencyResolveContext
+#### Property依赖关系的解析过程
 
-[org.gradle.api.internal.tasks.CachingTaskDependencyResolveContext]()
-
-```java
-    public Set<T> getDependencies(@Nullable Task task, Object dependencies) {
-        this.task = task;
-        try {
-            walker.add(dependencies);
-            return walker.findValues();
-        } catch (Exception e) {
-            throw new TaskDependencyResolveException(...);
-        } finally {
-            queue.clear();
-            this.task = null;
-        }
-    }
-```
-
-####  CachingDirectedGraphWalker
-
-[org.gradle.internal.graph.CachingDirectedGraphWalker]()
-
-```java
-    private Set<T> doSearch() {
-        ......
-          graph.getNodeValues(node, details.values, details.successors);
-        ......
-    }
-```
-
-####  CachingTaskDependencyResolveContext$TaskGraphImpl
-
-[org.gradle.api.internal.tasks.CachingTaskDependencyResolveContext$TaskGraphImpl]()
-
-```java
-        @Override
-        public void getNodeValues(Object node, final Collection<? super T> values, Collection<? super Object> connectedNodes) {
-            if (node instanceof TaskDependencyContainer) {
-                TaskDependencyContainer taskDependency = (TaskDependencyContainer) node;
-                queue.clear();
-                taskDependency.visitDependencies(CachingTaskDependencyResolveContext.this);
-                connectedNodes.addAll(queue);
-            } else if (node instanceof Buildable) {
-                Buildable buildable = (Buildable) node;
-                connectedNodes.add(buildable.getBuildDependencies());
-            } 
-            ......
-        }
-
-```
-
-####  TaskDependencyContainer
+#####  TaskDependencyContainer
 
 [org.gradle.api.internal.tasks.TaskDependencyContainer]()
 ```java
@@ -322,10 +437,13 @@ public interface TaskDependencyContainer {
     }
 ```
 
-__DirectoryProperty __继承自 __TaskDependencyContainer__，因此该类型的 __@Input__ 也会在构建任务依赖关系的时候被解析到，而这个 __producer__ 是在 Task 实例化的时候绑定的，详细可参考 [Gradle任务创建过程浅析]()
+__AbstractProperty__ 继承自 __TaskDependencyContainer__，因此该类型的 __@Input__ 也会在构建任务依赖关系的时候被解析到，而这个 __producer__ 是在 Task 实例化的时候绑定的，详细可参考 [Gradle之Task创建过程浅析]()
 
 
-####  Buildable
+
+#### DefaultConfigurableFileCollection依赖关系的解析过程
+
+#####  Buildable
 
 [org.gradle.api.tasks.TaskDependency.Buildable]()
 
@@ -347,17 +465,6 @@ public interface Buildable {
 }
 ```
 
-[org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection]()
-
-```java
-    @Override
-    public void visitDependencies(TaskDependencyResolveContext context) {
-        context.add(buildDependency);
-        super.visitDependencies(context);
-    }
-
-```
-
 [org.gradle.api.internal.file.CompositeFileCollection]()
 
 ```java
@@ -368,23 +475,17 @@ public interface Buildable {
     }
 ```
 
-[org.gradle.api.internal.file.collections.BuildDependenciesOnlyFileCollectionResolveContext]()
+[org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection]()
 
 ```java
     @Override
-    public boolean maybeAdd(Object element) {
-        if (element instanceof ProviderInternal) {
-            ProviderInternal provider = (ProviderInternal) element;
-            return provider.maybeVisitBuildDependencies(taskContext);
-        } else if (element instanceof TaskDependencyContainer || element instanceof Buildable) {
-            taskContext.add(element);
-        } else if (!(element instanceof MinimalFileCollection)) {
-            throw new IllegalArgumentException("Don't know how to determine the build dependencies of " + element);
-        } // else ignore
-        return true;
+    public void visitDependencies(TaskDependencyResolveContext context) {
+        context.add(buildDependency);
+        super.visitDependencies(context);
     }
 ```
-__DefaultConfigurableFileCollection__ 既继承自 __TaskDependencyContainer__，也继承自 __Buildable__，因此毫无疑问，它所代表的的 __@Input__ 也会在构建任务依赖关系的时候被解析到。
+
+__DefaultConfigurableFileCollection__ 既继承自 __TaskDependencyContainer__，也继承自 __Buildable__，毫无疑问，它所代表的 __@Input__ 也会在构建任务依赖关系的时候被解析到。
 
 
 

@@ -1,4 +1,4 @@
-###                            Gradle解析之Gradle的启动过程
+###                            Gradle之gradlew启动过程浅析
 
 
 
@@ -25,7 +25,7 @@ fi
 exec "$JAVACMD" "$@"
 ```
 
-__gradlew__脚本搜集和配置环境变量，然后直接使用java命令运行__org.gradle.wrapper.GradleWrapperMain__，这个__GradleWrapperMain__就是__gradle-wrapper.jar__的入口：
+__gradlew __脚本搜集和配置环境变量，然后直接使用java命令运行__org.gradle.wrapper.GradleWrapperMain__，这个 __GradleWrapperMain__ 就是 __gradle-wrapper.jar__ 的入口：
 
 
 
@@ -46,7 +46,7 @@ public class GradleWrapperMain {
 }
 ```
 
-__GradleWrapperMain__先搜集命令行参数及环境变量，然后调用运行__WrapperExecutor__:
+__GradleWrapperMain__ 先搜集命令行参数及环境变量，然后调用运行 __WrapperExecutor__:
 
 
 
@@ -61,7 +61,7 @@ __GradleWrapperMain__先搜集命令行参数及环境变量，然后调用运�
     }
 ```
 
-__WrapperExecutor__先解析__gradle-wrapper.properties__文件，然后下载安装__gradle-xxx-all.zip__，最后调用运行 __BootstrapMainStarter__:
+__WrapperExecutor __先解析 __gradle-wrapper.properties__ 文件，然后下载安装 __gradle-xxx-all.zip__，最后调用运行 __BootstrapMainStarter__:
 
 
 
@@ -86,7 +86,7 @@ public class BootstrapMainStarter {
 }
 ```
 
-__BootstrapMainStarter__先加载__gradle-launcher-xxx.jar__，然后以反射的方式调用 __org.gradle.launcher.GradleMain__:
+__BootstrapMainStarter __先加载 __gradle-launcher-xxx.jar__，然后以反射的方式调用 __org.gradle.launcher.GradleMain__:
 
 
 
@@ -108,7 +108,7 @@ public class GradleMain {
 }
 ```
 
-__GradleMain__简单的校验Java运行版本，然后通过__ProcessBootstrap__初始化运行环境并以反射的方式调用__org.gradle.launcher.Main__: 
+__GradleMain__ 简单的校验 Java 运行版本，然后通过 __ProcessBootstrap__ 初始化运行环境并以反射的方式调用__org.gradle.launcher.Main__: 
 
 
 
@@ -135,7 +135,7 @@ public class Main extends EntryPoint {
 }
 ```
 
-__Main__调用__CommandLineActionFactory__先将输入参数封装为__ParseAndBuildAction__，然后再包装为__WithLogging__并运行：
+__Main __调用 __CommandLineActionFactory__ 先将输入参数封装为 __ParseAndBuildAction__，然后再包装为__WithLogging__ 并运行：
 
 
 
@@ -164,7 +164,7 @@ __Main__调用__CommandLineActionFactory__先将输入参数封装为__ParseAndB
     }
 ```
 
-__WithLogging__顾名思义，就是配置log输出
+__WithLogging __顾名思义，就是配置 log 输出，此处不细究。
 
 
 
@@ -208,7 +208,7 @@ __WithLogging__顾名思义，就是配置log输出
     }
 ```
 
-__ParseAndBuildAction__先调用__CommandLineParser__解析输入参数，然后调用__createAction()__方法创建一个可执行__Action__并执行：
+__ParseAndBuildAction__ 先调用 __CommandLineParser__ 解析输入参数，然后调用 __createAction()__ 方法创建一个可执行 __Action__ 并执行：
 
 
 
@@ -262,7 +262,7 @@ class BuildActionsFactory implements CommandLineAction {
 }
 ```
 
-__BuildActionsFactory__根据输入参数判断运行模式，然后创建和配置__Action__；需要注意的是：对于非daemon模式，__GlobalScopeServices__正是在这个地方创建并初始化的，关于daemon模式，参考[gradle_daemon](https://docs.gradle.org/current/userguide/gradle_daemon.html)
+__BuildActionsFactory__ 根据输入参数判断运行模式，然后创建和配置 __Action__；需要注意的是：对于非 __daemon模式__ ，__GlobalScopeServices__ 正是在这个地方创建并初始化的，关于daemon模式，参考 [gradle_daemon](https://docs.gradle.org/current/userguide/gradle_daemon.html)
 
 
 
@@ -312,15 +312,15 @@ public class LauncherServices extends AbstractPluginServiceRegistry {
     }
 ```
 
-__GlobalScopeServices__是整个Gradle系统Service机制的入口，由[Gradle运行体系之ServiceRegistry]()一文可知，__GlobalScopeServices__实例化的时候即会自动执行__configure**()__类型的方法。因此这里：
+__GlobalScopeServices__ 是整个 Gradle 系统 Service 机制的入口，由 [Gradle之ServiceRegistry浅析]() 一文可知，__GlobalScopeServices __实例化的时候即会自动执行 __configure**()__ 类型的方法。因此这里：
 
 * 先触发创建__LauncherServices__，
 
-* 然后将__ToolingGlobalScopeServices__注册到__GlobalScopeServices__。
+* 然后将 __ToolingGlobalScopeServices__ 注册到 __GlobalScopeServices__。
 
   
 
-所以上文中__globalServices.get(BuildExecuter.class)__方法调用实际上调用的是__ToolingGlobalScopeServices.createBuildExecuter()__这个方法。
+所以上文中 __globalServices.get(BuildExecuter.class)__ 方法调用实际上调用的是 __ToolingGlobalScopeServices.createBuildExecuter()__ 这个方法。
 
 
 
@@ -350,7 +350,7 @@ public class RunBuildAction implements Runnable {
 }
 ```
 
-__RunBuildAction__将命令参数封装为__ExecuteBuildAction__，然后调用__BuildActionExecuter__执行该Action：
+__RunBuildAction__ 将命令参数封装为 __ExecuteBuildAction__，然后调用 __BuildActionExecuter__ 执行该Action：
 
 
 
@@ -388,10 +388,10 @@ __RunBuildAction__将命令参数封装为__ExecuteBuildAction__，然后调用_
     }
 ```
 
-我们以__InProcessBuildActionExecuter__为例，看一下__BuildActionExecuter__是如何执行Action的：
+我们以 __InProcessBuildActionExecuter__ 为例，看一下 __BuildActionExecuter__ 是如何执行 Action 的：
 
-* 首先创建__RootBuildState__
-* 然后调用__RootBuildState__执行__Transformer__
+* 首先创建 __RootBuildState__
+* 然后调用 __RootBuildState__ 执行 __Transformer__
 
 
 
@@ -416,7 +416,7 @@ public class DefaultIncludedBuildRegistry implements BuildStateRegistry, Stoppab
 }
 ```
 
-__DefaultIncludedBuildRegistry__负责创建__RootBuildState__，__RootBuildState __represents the root build of a build tree。
+__DefaultIncludedBuildRegistry __负责创建 __RootBuildState__，__RootBuildState __represents the root build of a build tree。
 
 
 
@@ -445,7 +445,7 @@ __DefaultIncludedBuildRegistry__负责创建__RootBuildState__，__RootBuildStat
     }
 ```
 
-__DefaultRootBuildState__在实例化的时候会创建__GradleLauncher__，同时run的时候会创建__GradleBuildController__。
+__DefaultRootBuildState __ 在实例化的时候会创建 __GradleLauncher__，同时run的时候会创建__GradleBuildController__。
 
 
 
@@ -534,7 +534,8 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
 }
 ```
 
-需要注意的是__DefaultGradleLauncherFactory__在创建__DefaultGradleLauncher__的时候，即会触发创建__BuildScopeServices__，然后触发创建__GradleInternal__，而__GradleInternal__实例化的时候又会创建并注册__GradleScopeServices__，这个__GradleScopeServices__正是任务执行的入口，详情参考[Gradle任务关系构建浅析]()
+需要注意的是 __DefaultGradleLauncherFactory__ 在创建 __DefaultGradleLauncher__ 的时候，即会触发创建__BuildScopeServices__，然后触发创建 __GradleInternal__，而 __GradleInternal__ 实例化的时候又会创建并注册__GradleScopeServices__，这个 __GradleScopeServices__ 正是任务执行的入口，详情参考 [Gradle之Task依赖构建浅析]()
+
 
 
 #### Gradle运行的五个阶段

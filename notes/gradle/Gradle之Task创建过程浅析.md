@@ -1,8 +1,20 @@
-###         Gradle 任务创建过程浅析
+###         Gradle之Task创建过程浅析
 
-#### DefaultTaskContainer
 
-当我们通过  __project.tasks.registerTask__ 注册任务的时候，实际上调用的是 __TaskContainer__ 中的方法，其默认实现是 __DefaultTaskContainer__。
+
+#### Task创建方式：create & register
+
+gradle中任务的创建方式有两种：
+
+* 直接创建该Task
+
+* 注册Task，即创建TaskProvider，真正使用到该Task时才创建
+
+
+
+#### Task注册过程
+
+当我们通过  __project.tasks.registerTask()__ 注册任务的时候，实际上调用的是 __TaskContainer__ 中的方法，其默认实现是 __DefaultTaskContainer__。
 
 [org.gradle.api.internal.tasks.DefaultTaskContainer](https://github.com/gradle/gradle/blob/master/subprojects/core/src/main/java/org/gradle/api/internal/tasks/DefaultTaskContainer.java)
 
@@ -14,6 +26,7 @@ private <T extends Task> TaskProvider<T> registerTask(final String name, final C
 
         final TaskIdentity<T> identity = TaskIdentity.create(name, type, project);
 
+        // 创建并返回TaskProvider
         TaskProvider<T> provider = buildOperationExecutor.call(new CallableBuildOperation<TaskProvider<T>>() {
             @Override
             public BuildOperationDescriptor.Builder description() {
@@ -41,7 +54,9 @@ private <T extends Task> TaskProvider<T> registerTask(final String name, final C
     }
 ```
 
-任务注册的时候，只是创建了一个 __TaskProvider__ 实例，只有当实际需要使用该Task的时候才会触发任务创建过程。
+任务注册的时候，只是创建了一个 __TaskProvider__ 实例，只有当实际需要使用该 Task 的时候才会触发任务创建过程。
+
+
 
 ```java
 private <T extends Task> T createTask(TaskIdentity<T> identity, @Nullable Object[] constructorArgs) throws InvalidUserDataException {
@@ -52,15 +67,18 @@ private <T extends Task> T createTask(TaskIdentity<T> identity, @Nullable Object
                 }
             }
         }
+        // 创建Task实例
         return taskFactory.create(identity, constructorArgs);
     }
 ```
 
-而 __registerTask__ 最后调用的也还是  __createTask__ 方法，  __createTask__ 方法通过 __ITaskFactory__ 创建Task实例
+实际上，__registerTask()__ 最后调用的也还是  __createTask()__ 方法，  __createTask()__ 方法通过 __ITaskFactory__ 创建Task实例。__ITaskFactory__ 顾名思义就是创建 Task 的工厂类：
 
-##### BuildScopeServices
 
-__ITaskFactory__ 这个接口，默认有三个实现类，那么我们究竟使用的是哪一个实现类呢？事实上，这三个实现类是以类似责任链的方式串联在一起，分别负责处理Task创建过程的不同方面：
+
+#### Task 创建过程
+
+__ITaskFactory__ 这个接口，默认有三个实现类，那么我们究竟使用的是哪一个实现类呢？事实上，这三个实现类是以责任链的方式串联在一起，分别负责处理 Task 创建的不同过程：
 
 [org.gradle.internal.service.scopes.BuildScopeServices]()
 
@@ -76,7 +94,9 @@ __ITaskFactory__ 这个接口，默认有三个实现类，那么我们究竟使
     }
 ```
 
-#### AnnotationProcessingTaskFactory 
+
+
+##### AnnotationProcessingTaskFactory 
 
 [org.gradle.api.internal.project.taskfactory.AnnotationProcessingTaskFactory]()
 
@@ -85,10 +105,11 @@ __ITaskFactory__ 这个接口，默认有三个实现类，那么我们究竟使
  * A {@link ITaskFactory} which determines task actions, inputs and outputs based on annotation attached to the task properties. Also provides some validation based on these annotations.
  */
 ```
-正如注释所说，__AnnotationProcessingTaskFactory__ 这个类主要是负责解析Task类的注解，处理标识Task内容的注解，例如处理 __@Action__ 注解，将改注解标识的方法封装成 Action 实例，并添加到 actionList 中
+如注释所说，__AnnotationProcessingTaskFactory__ 这个类主要是负责解析 Task 类的注解，处理标识 Task 内容的注解，例如处理 __@Action__ 注解，将改注解标识的方法封装成 Action 实例，并添加到 actionList 中
 
 
-#### PropertyAssociationTaskFactory
+
+##### PropertyAssociationTaskFactory
 
 [org.gradle.api.internal.project.taskfactory.PropertyAssociationTaskFactory]()
 
@@ -107,32 +128,27 @@ private static class Listener implements PropertyVisitor {
         
         @Override
         public void visitOutputFileProperty(String propertyName, boolean optional, PropertyValue value, OutputFilePropertyType filePropertyType) {
+            // 注意：此处将task与property绑定在一起
             value.attachProducer(task);
         }
     }
 ```
 
-而 __PropertyAssociationTaskFactory__ 则是负责遍历及初始化 __property__，其中最重要就是 __PropertyAssociationTaskFactory$Listener__ 这个内部类，这个内部类负责初始化 ____ 类型的 __property__，也就是将当前task实例绑定到当前task的 __Property__ 中。
+而 __PropertyAssociationTaskFactory__ 则是负责遍历及初始化 __property__，其中最重要就是 __PropertyAssociationTaskFactory$Listener__ 这个内部类，这个内部类负责初始化 __@OutputFile__ 注解标识的 __property__，也就是将当前 task 实例绑定到该 __Property__ 中。
 
-后面我们会讲到，这个 __Property__ 是连接两个不同的任务的纽带，也就是生产者生产和消费者消费的 __产品__ 。而恰恰是这个地方，将两个任务连接起来，消费者通过这个 __Property__ 便可以获取到生产者，从而建立起任务依赖关系。
+后续我们会讲到，这个 __Property__ 是连接两个不同的任务的纽带，也就是生产者生产和消费者消费的 __产品__ 。而恰恰是这个地方，将两个任务连接起来，消费者通过这个 __Property__ 便可以获取到生产者，从而建立起 __任务依赖关系__。
 
 
-#### TaskFactory
+
+##### TaskFactory
 
 [org.gradle.api.internal.project.taskfactory.TaskFactory]()
 
-而 __TaskFactory__ 这个类才是真正负责实例化Task的类：
+而 __TaskFactory__ 这个类才是真正负责实例化 Task 的类：
 
 ```java
 public <S extends Task> S create(final TaskIdentity<S> identity, @Nullable final Object[] constructorArgs) {
-        if (!Task.class.isAssignableFrom(identity.type)) {
-            throw new InvalidUserDataException(String.format(
-                "Cannot create task of type '%s' as it does not implement the Task interface.",
-                identity.type.getSimpleName()));
-        }
-
-        NameValidator.validate(identity.name, "task name", "");
-
+        ......
         final Class<? extends AbstractTask> implType;
         if (identity.type.isAssignableFrom(DefaultTask.class)) {
             implType = DefaultTask.class;
@@ -146,25 +162,53 @@ public <S extends Task> S create(final TaskIdentity<S> identity, @Nullable final
                 try {
                     Task instance;
                     if (constructorArgs != null) {
+                        // 有构造参数
                         instance = instantiationScheme.instantiator().newInstance(implType, constructorArgs);
                     } else {
+                        // 无构造参数
                         instance = instantiationScheme.deserializationInstantiator().newInstance(implType, AbstractTask.class);
                     }
                     return identity.type.cast(instance);
                 } catch (ObjectInstantiationException e) {
-                    throw new TaskInstantiationException(String.format("Could not create task of type '%s'.", identity.type.getSimpleName()),
-                        e.getCause());
+                    ......
                 }
             }
         });
     }
 ```
 
-这是任务创建实例化的全过程，需要注意的是，这里并不是简简单单的实例化 __implType__，而是动态的生成 __implType __ 类的实现类，例如  __implType_Decorated__ 、 __implType$Decorated__ 或者 __implType$Inject__。
+以上任务创建实例化的过程，需要注意的是：这里并不是简简单单的实例化 __implType__，而是动态的生成 __implType __ 类的子类，例如  __implType_Decorated__ 、 __implType$Decorated__ 或 __implType$Inject__。
 
-为什么需要这么做呢？一方面，__implType__ 类很有可能只是抽象类，是无法直接实例化；另一方面，自动生成的装饰类也会添加一些辅助方法，详情可以参考下文相关注释。
+为什么需要这么做呢？一方面，__implType__ 类很有可能只是抽象类，是无法直接实例化；另一方面，自动生成的装饰类也会添加一些辅助(DSL)方法：
 
-#### AbstractClassGenerator
+
+
+#### 动态生成 Task 子类的过程
+
+##### DefaultInstantiationScheme$DefaultDeserializationInstantiator
+
+[org.gradle.internal.instantiation.generator.DefaultInstantiationScheme$DefaultDeserializationInstantiator]()
+
+```java
+@Override
+        public <T> T newInstance(Class<T> implType, Class<? super T> baseClass) {
+            // TODO - The baseClass can be inferred from the implType, so attach the serialization constructor onto the GeneratedClass rather than parameterizing and caching here
+            try {
+                ClassGenerator.SerializationConstructor<?> constructor = constructorCache.get(implType, type -> classGenerator.generate(implType).getSerializationConstructor(baseClass));
+                return implType.cast(constructor.newInstance(services, nestedGenerator));
+            } catch (InvocationTargetException e) {
+                throw new ObjectInstantiationException(implType, e.getCause());
+            } catch (Exception e) {
+                throw new ObjectInstantiationException(implType, e);
+            }
+        }
+```
+
+当我们以无参数的方式实例化 Task 的时候，即会通过 DefaultDeserializationInstantiator 实例化该Task，而 DefaultDeserializationInstantiator 则会动态的生成 Task 的子类：
+
+
+
+##### AbstractClassGenerator
 
 [org.gradle.internal.instantiation.generator.AbstractClassGenerator]()
 
@@ -188,9 +232,11 @@ abstract class AbstractClassGenerator implements ClassGenerator {
 }
 ```
 
-我们重点来看一下，kotlin 代码中的 __abstrack val property;__ 是最终动态生成的代码是什么？
+我们重点来看一下，kotlin 代码中的 “ __abstract val property;__ ” 是最终动态生成的代码是什么？
 
-#### AsmBackedClassGenerator
+
+
+##### AsmBackedClassGenerator
 
 [org.gradle.internal.instantiation.generator.AsmBackedClassGenerator]()
 
@@ -215,11 +261,14 @@ abstract class AbstractClassGenerator implements ClassGenerator {
     }
 ```
 
-从上面的代码可以看出，gradle会为 __property__，动态生成一个 **__property__** 的成员变量，并通过 __getFactory()__ 初始化该变量，而 __getFactory()__ 返回的是 __ManagedObjectFactory__的实例：
+从上面的代码可以看出，gradle 会为 __property__，动态生成一个 **"\__property__"** 的成员变量，并通过 __getFactory().newInstance(...)__ 初始化该变量，而 __getFactory()__ 返回的是 __ManagedObjectFactory__ 的实例：
 
-#### ManagedObjectFactory
+
+
+##### ManagedObjectFactory
 
 [org.gradle.internal.instantiation.generator.ManagedObjectFactory]()
+
 ```java
 // Called from generated code
     public Object newInstance(GeneratedSubclass owner, @Nullable Describable ownerDisplayName, String propertyName, Class<?> type) {
@@ -238,23 +287,7 @@ abstract class AbstractClassGenerator implements ClassGenerator {
         return instantiator.newInstanceWithDisplayName(type, displayNameFor(owner, ownerDisplayName, propertyName));
     }
 ```
-__ManagedObjectFactory__ 自动根据 __property__ 的类型，为其创建不同类型的实例。
-
-#### DefaultInstantiationScheme
-
-[org.gradle.internal.instantiation.generator.DefaultInstantiationScheme]()
-
-```java
-/**
- * A scheme, or strategy, for creating objects.
- *
- * <p>Implementations are provided by a {@link InstantiatorFactory}.</p>
- */
-public interface InstantiationScheme {
-    ......
-}
-```
-
+__ManagedObjectFactory__ 自动根据 __property__ 的类型，为其创建不同类型的实例，例如对于 ConfigurableFileCollection 创建的是 DefaultConfigurableFileCollection 实例；对于 DirectoryProperty 创建的是 DefaultDirectoryVar 实例等等。
 
 
 

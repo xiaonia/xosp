@@ -241,7 +241,7 @@ private class TaskAction<T: Task>(
 
 * 执行 __CreationAction.handleProvider(taskProvider)__
 
-* 调用 __TaskProvider.get()__，触发创建 __Task__，参考 [Gradle任务创建过程浅析]()
+* 调用 __TaskProvider.get()__，触发创建 __Task__，参考 [Gradle之Task创建过程浅析]()
 
 * Task创建之后执行 __CreationAction.configure(task)__
 

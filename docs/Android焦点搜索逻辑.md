@@ -1,18 +1,15 @@
 ###                                                                        Android焦点搜索逻辑
 
-
-
 #### 引言
 
-上一篇文章[Android焦点分发逻辑](./Android焦点分发逻辑.md)，我们简单的梳理了一下焦点分发的逻辑，这一次，我们再详细的探讨一下焦点搜索的逻辑。
+上一篇文章[Android焦点分发逻辑](./Android焦点分发逻辑.md)，我们简单的梳理了一下焦点分发的逻辑，这一次，我们再探讨一下焦点搜索的逻辑。
 
-
-
-#### focusSearch 
+#### 搜索起点：focusSearch 
 
 在上一篇文章[Android焦点分发逻辑](./Android焦点分发逻辑.md)，我们说过焦点的搜索都是通过调用 _focusSearch(...)_ 方法，那么这个方法都做了些什么呢？
 
 [ViewRootImpl.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/ViewRootImpl.java)
+
 ```java
     public View focusSearch(View focused, int direction) {
         checkThread();
@@ -24,8 +21,8 @@
 ```
 我们先来看看 _ViewRootImpl_  这个类的 _focusSearch(...)_ 方法，如上代码所示： 对于 _ViewRootImpl_ 这个类来说， _mView_ 就是我们添加到 _Window_ 的 _RootView_，因此正常来说 _mView_ 都是 _ViewGroup_ 类型，所以这个 _focusSearch(...)_ 方法最后会将查找逻辑外包给了 _FocusFinder.getInstance().findNextFocus(...)_。 
 
-
 [View.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/View.java)
+
 ```java
     /**
      * Find the nearest view in the specified direction that can take focus.
@@ -43,6 +40,7 @@
 接着我们再来看看 _View_ 的 _focusSearch(...)_ 方法： _View_ 的 _focusSearch(...)_ 方法逻辑很简单，直接调用 _mParent.focusSearch(...)_ 方法，向上层传递。
 
 [ViewGroup.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/ViewGroup.java)
+
 ```java
     /**
      * Find the nearest view in the specified direction that wants to take
@@ -80,6 +78,7 @@
     }
 ```
 [PhoneWindow.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/com/android/internal/policy/PhoneWindow.java)
+
 ```java
     private void installDecor() {
         if (mDecor == null) {
@@ -97,11 +96,11 @@
 
 综上，__*focusSearch(...)* 方法最终都是将查找逻辑外包给 *FocusFinder*__。
 
-
-
-#### FocusFinder
+#### 总体筛查过程
 
 是时候进入正题了，我们来分析一下 _FocusFinder_ 是如何搜集并筛选"候选View"的。
+
+##### findNextFocus
 
 [FocusFinder.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/FocusFinder.java)
 
@@ -131,19 +130,20 @@ private View findNextFocus(ViewGroup root, View focused, Rect focusedRect, int d
     }
 ```
 
-首先，_findUserSetNextFocus(...)_ 会查找是否存在自定义的焦点分发逻辑，即通过 _setNextFocusXxxxId(...)_ 方法设置的焦点分发逻辑，如果存在则返回该View。也就是说我们__可以通过_setNextFocusXxxxId(...)_这种方式来自定义焦点分发逻辑__。
+首先，_findUserSetNextFocus(...)_ 会查找是否存在自定义的焦点分发逻辑，即通过 _setNextFocusXxxxId(...)_ 方法设置的焦点分发逻辑，如果存在则返回该 View。也就是说 __可以通过 _setNextFocusXxxxId(...)_ 这种方式来自定义焦点分发逻辑__。
 
 其次，如果没有自定义焦点分发逻辑，那么就会走系统默认的焦点分发逻辑，主要分两步：
 
-* 一是，搜集所有的候选View，即通过递归的调用 _addFocusables(...)_ 方法搜集所有可获焦的View
+* 一是，搜集所有的候选 View，即通过递归的调用 _addFocusables(...)_ 方法搜集所有可获焦的 View
 
-* 二是，遍历所有的候选View，即通过调用 _findNextFocus(...)_ 方法筛选出最合适的候选View
+* 二是，遍历所有的候选 View，即通过调用 _findNextFocus(...)_ 方法筛查出最合适的候选 View
 
-  
+#### 构建候选列表
 
-#### addFocusables
+##### addFocusables
 
 [View.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/View.java)
+
 ```java
     /**
      * Adds any focusable views that are descendants of this view (possibly
@@ -165,10 +165,10 @@ private View findNextFocus(ViewGroup root, View focused, Rect focusedRect, int d
     }
 ```
 
-_View_ 类中的 _addFocusables(...)_ 方法相对简单：判断当前View是否可获焦，如果可以获焦，则将当前View添加到 _focusables_ 中。
-
+_View_ 类中的 _addFocusables(...)_ 方法相对简单：判断当前 View 是否可获焦，如果可以获焦，则将当前 View 添加到 _focusables_ 中。
 
 [ViewGroup.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/ViewGroup.java)
+
 ```java
     public void addFocusables(ArrayList<View> views, int direction, int focusableMode) {
         final int focusableCount = views.size();
@@ -202,16 +202,17 @@ _View_ 类中的 _addFocusables(...)_ 方法相对简单：判断当前View是�
 ```
 而 _ViewGroup_ 类中的 _addFocusables(...)_ 方法则相对复杂。它会根据我们设置的 _descendantFocusability_ 策略做不同的处理：
 
-* __*FOCUS_BLOCK_DESCENDANTS* 即拦截ChildView获焦__：仅调用当前View的 _addFocusables(...)_ 方法(即仅添加当前View)。
+* __*FOCUS_BLOCK_DESCENDANTS* 即拦截 ChildView 获焦__：仅调用当前 View 的 _addFocusables(...)_ 方法(即仅添加当前 View)。
 
-* __*FOCUS_BEFORE_DESCENDANTS* 即ParentView优先获焦__：先递归调用所有可见ChildView的 _addFocusables(...)_ 方法(即添加可见ChildView)，然后调用当前View的 _addFocusables(...)_ 方法(即添加当前View)。
-* __*FOCUS_AFTER_DESCENDANTS* 即ChildView优先获焦__：先递归调用所有可见ChildView的 _addFocusables(...)_ 方法(即添加可见ChildView)，然后__如果没有添加任何ChildView__，才调用当前View的 _addFocusables(...)_ 方法(即添加当前View)。
+* __*FOCUS_BEFORE_DESCENDANTS* 即 ParentView 优先获焦__：先递归调用所有可见ChildView的 _addFocusables(...)_ 方法(即添加可见 ChildView)，然后调用当前 View 的 _addFocusables(...)_ 方法(即添加当前 View)。
 
-因此__如果我们需要自定义焦点分发逻辑，也可以通过覆写 _addFocusables(...)_ 方法来实现。 __
+* __*FOCUS_AFTER_DESCENDANTS* 即 ChildView 优先获焦__：先递归调用所有可见 ChildView 的 _addFocusables(...)_ 方法(即添加可见 ChildView)，然后__如果没有添加任何 ChildView __，才调用当前 View 的 _addFocusables(...)_ 方法(即添加当前 View)。
 
+因此 __如果我们需要自定义焦点分发逻辑，也可以通过覆写 _addFocusables(...)_ 方法来实现。 __
 
+#### 筛查候选View
 
-#### findNextFocus
+##### findNextFocus
 
 [FocusFinder.java](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-6.0.1_r81/core/java/android/view/FocusFinder.java)
 
@@ -275,9 +276,9 @@ private View findNextFocus(ViewGroup root, View focused, Rect focusedRect,
         }
     }
 ```
-_findNextFocus(...)_方法同样是分两步走，__首先，计算当前焦点的获焦区域__，为什么一定要有这个获焦区域呢？因为后续我们判断哪个候选View更合适的时候，需要找到位置与这个区域最近的View(包括__方位和距离__)：
+_findNextFocus(...)_ 方法同样是分两步走，__首先，计算当前焦点的获焦区域__，为什么一定要有这个获焦区域呢？因为后续我们判断哪个候选View更合适的时候，需要找到位置与这个区域最近的View(包括__方位和距离__)：
 
-* 如果当前存在焦点，则直接通过 _getFocusedRect(...)_获取其获焦区域，并将其转换到 _RootView_ 的坐标系下(一般是PhoneWindow$DecorView)。
+* 如果当前存在焦点，则直接通过 _getFocusedRect(...)_ 获取其获焦区域，并将其转换到 _RootView_ 的坐标系下(一般是 PhoneWindow$DecorView)。
 
 * 如果不存在焦点，则根据焦点分发事件初始化一个默认的获焦区域：
 
@@ -287,11 +288,11 @@ _findNextFocus(...)_方法同样是分两步走，__首先，计算当前焦点�
 
     * 另外，对于 _FOCUS_FORWARD_ 或 _FOCUS_BACKWARD_事件，这个位置则跟布局方向( _isLayoutRtl()_ )息息相关，此处不再详述。 
 
-__接着，开始筛选最合适的候选View__，如果是 _FOCUS_FORWARD_ 或 _FOCUS_BACKWARD_ 事件，则调用 _findNextFocusInRelativeDirection(...)_ 方法进行比较筛选；其他的事件则调用 _findNextFocusInAbsoluteDirection(...)_进行比较筛选。从方法名我们也可以看出来，向前与向后是筛选出相对位置最合适的View，而上下左右则是筛选出绝对位置最合适的View。
+__接着，开始筛选最合适的候选View__，如果是 _FOCUS_FORWARD_ 或 _FOCUS_BACKWARD_ 事件，则调用 _findNextFocusInRelativeDirection(...)_ 方法进行比较筛选；其他的事件则调用 _findNextFocusInAbsoluteDirection(...)_ 进行比较筛选。从方法名我们也可以看出来，向前与向后是筛选出相对位置最合适的 View，而上下左右则是筛选出绝对位置最合适的 View。
 
+#### 相对位置筛查
 
-
-#### findNextFocusInRelativeDirection
+##### findNextFocusInRelativeDirection
 
 ```java
     private View findNextFocusInRelativeDirection(ArrayList<View> focusables, ViewGroup root,
@@ -327,11 +328,11 @@ __接着，开始筛选最合适的候选View__，如果是 _FOCUS_FORWARD_ 或 
 
 * 根据  _DrawingRect.right_ 排序，这个也跟布局方向有关：如果布局方向是从左到右则按 _right_ 值升序排列；如果布局方向是从右到左则按 _right_ 值降序排列。
 
-接着，调用 _getNextFocusable(...)_ (或_getPreviousFocusable(...)_)方法找到当前获焦View的前一个(或后一个)候选View，如果当前获焦的View不在 _focusables_ 里面，则返回第一个(或最后一个)候选View。
+接着，调用 _getNextFocusable(...)_ (或_getPreviousFocusable(...)_) 方法找到当前获焦 View 的前一个(或后一个)候选 View，如果当前获焦的 View 不在 _focusables_ 里面，则返回第一个(或最后一个)候选 View。
 
+#### 绝对位置筛查
 
-
-#### findNextFocusInAbsoluteDirection
+##### findNextFocusInAbsoluteDirection
 
 ```java
     View findNextFocusInAbsoluteDirection(ArrayList<View> focusables, ViewGroup root, View focused,
@@ -372,7 +373,7 @@ __接着，开始筛选最合适的候选View__，如果是 _FOCUS_FORWARD_ 或 
     }
 ```
 
-_findNextFocusInAbsoluteDirection(...)_ 方法的逻辑稍微复杂一点，因为这个方法涉及筛选出方位和距离最合适的View。
+_findNextFocusInAbsoluteDirection(...)_ 方法的逻辑稍微复杂一点，因为这个方法涉及筛选出__方位__和__距离__最合适的 View。
 
 __首先，计算出一个极限区域作为初始 *mBestCandidateRect* __，当然因为这个区域完全不符合条件，因此任何满足条件的候选View都将取代它(这就好比我们要筛选最小值时，将这个值初始化为最大值，然后再去跟其他值比较)。
 
@@ -380,15 +381,12 @@ __首先，计算出一个极限区域作为初始 *mBestCandidateRect* __，当
 
 __接着，循环遍历 *focusables* 里所有的View(不包括当前FocusedView和RootView)，找到方位和距离最合适的候选View__。__注意，这里我们比较的是 *getFocusedRect(...)* __。那么又是通过哪些条件判断出哪个View是最合适的呢？
 
-
-
-
-#### isBetterCandidate
+##### isBetterCandidate
 
 ```java
 // 判断rect1是否比rect2更合适，返回true表示rect1更合适，返回false表示rect2更合适
 boolean isBetterCandidate(int direction, Rect source, Rect rect1, Rect rect2) {
-        // 首先通过相对于当前获焦区域的方向判断
+        // 首先通过相对于当前获焦区域的【方向】判断
         // to be a better candidate, need to at least be a candidate in the first
         // place :)
         if (!isCandidate(source, rect1, direction)) {
@@ -399,7 +397,7 @@ boolean isBetterCandidate(int direction, Rect source, Rect rect1, Rect rect2) {
         if (!isCandidate(source, rect2, direction)) {
             return true;
         }
-        // 然后通过相对于当前获焦区域的位置判断
+        // 然后通过相对于当前获焦区域的【位置】判断
         // if rect1 is better by beam, it wins
         if (beamBeats(direction, source, rect1, rect2)) {
             return true;
@@ -408,7 +406,7 @@ boolean isBetterCandidate(int direction, Rect source, Rect rect1, Rect rect2) {
         if (beamBeats(direction, source, rect2, rect1)) {
             return false;
         }
-        // 最后通过相对于当前获焦区域的距离判断
+        // 最后通过相对于当前获焦区域的【距离】判断
         // otherwise, do fudge-tastic comparison of the major and minor axis
         return (getWeightedDistanceFor(
                         majorAxisDistance(direction, source, rect1),
@@ -420,16 +418,14 @@ boolean isBetterCandidate(int direction, Rect source, Rect rect1, Rect rect2) {
 ```
 __首先，通过 _isCandidate(...)_ 方法判断候选区域相对于当前获焦区域的方向上是否满足条件，即候选区域是不是比当前获焦区域更靠近目标方向。__
 
-接着，如果两个候选区域都满足条件，则 __*beamBeats(...)* 会通过更加严苛的位置条件来进行判断__，详细逻辑移步  #beamBeats#：
+接着，如果两个候选区域都满足条件，则 __*beamBeats(...)* 会通过更加严苛的位置条件来进行判断__，详细逻辑移步下文  #beamBeats#：
 
-最后，如果还是无法判断哪个候选区域更合适，则__*getWeightedDistanceFor(...)* 方法会以一定的权重比来计算两个候选区域距离当前获焦区域的距离，并选择距离更近的候选区域__。注意这个距离不是简单地计算两个中心点之间的距离，而是包含特殊权重比的距离。
+最后，如果还是无法判断哪个候选区域更合适，则 __*getWeightedDistanceFor(...)* 方法会以一定的权重比来计算两个候选区域距离当前获焦区域的距离，并选择距离更近的候选区域__。注意这个距离不是简单地计算两个中心点之间的距离，而是包含特殊权重比的距离。
 
-
-
-#### beamBeats
+##### beamBeats
 
 ```java
-    // 判断rect1是否比rect2更合适，返回true表示rect1更合适；返回false表示无法判断或者rect2更合适
+    // 判断rect1是否比rect2更合适，返回true表示rect1更合适；【注意：返回false表示无法判断】
     boolean beamBeats(int direction, Rect source, Rect rect1, Rect rect2) {
         // 判断rect1与source在非目标方向上是否有交集
         final boolean rect1InSrcBeam = beamsOverlap(direction, source, rect1);
@@ -537,11 +533,7 @@ __首先，通过 _isCandidate(...)_ 方法判断候选区域相对于当前获�
 
 * 区域2.2与1.2，由于2.2与1.2不在同一行，且 __垂直方向上不允许跨行移动焦点__，因此区域1.2更合适。
 
-
-
 #### 附：FocusFinder部分方法解析
-
-
 
 ##### isCandidate
 
@@ -568,8 +560,6 @@ _isCandidate(...)_ 方法主要是__判断候选区域(dest)是否比当前获�
       *  dest  *
       *        *
 ```
-
-
 
 ##### beamsOverlap
 
@@ -600,8 +590,6 @@ _beamsOverlap(...)_ 方法主要是__判断候选区域(dest)跟当前获焦区�
 **********                    ----------               ----------
       -----------      ********** 
 ```
-
-
 
 ##### isToDirectionOf
 
@@ -634,8 +622,6 @@ _isToDirectionOf(...)_ 方法主要是__判断候选区域(dest)与当前获焦�
       *      *                    |     |
       *      *                    |     |
 ```
-
-
 
 ##### majorAxisDistance
 
@@ -673,8 +659,6 @@ _majorAxisDistance(...)_ 方法主要是__计算当前焦点区域(src)到候选
       *      *                         |     |
       *      *                         |     |
 ```
-
-
 
 ##### majorAxisDistanceToFarEdge
 
@@ -714,8 +698,6 @@ _majorAxisDistanceToFarEdge(...)_ 方法主要是 __计算当前焦点区域(src
       *      *                               |     |
 ```
 
-
-
 ##### minorAxisDistance
 
 ```java
@@ -750,6 +732,7 @@ _majorAxisDistanceToFarEdge(...)_ 方法主要是 __计算当前焦点区域(src
 _minorAxisDistance(...)_ 方法主要是__计算当前获焦区域(src)中心点到候选区域(dest)中心点非目标方向上的距离__：
 
 * 对于 _FOCUS_LEFT_ 或 _FOCUS_RIGHT_，则计算当前获焦区域中心点到候选区域中心点垂直方向上的距离(可为负值)，如下图所示；
+
 * 对于 _FOCUS_UP_ 或 _FOCUS_DOWN_ ，则计算当前获焦区域到候选区域中心点水平方向上的距离(可为负值)。
 
 ```java
@@ -766,8 +749,6 @@ _minorAxisDistance(...)_ 方法主要是__计算当前获焦区域(src)中心点
          
     ***********
 ```
-
-
 
 #####  getWeightedDistanceFor
 

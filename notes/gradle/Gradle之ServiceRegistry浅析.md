@@ -1,4 +1,4 @@
-####                                      Gradle解析之深入理解ServiceRegistry
+####                                      Gradle之ServiceRegistry浅析
 
 
 
@@ -82,7 +82,7 @@ public abstract class DefaultGradle extends AbstractPluginAware implements Gradl
 
 __generateUnderLock(...)__ 方法是运行时生成字节码的核心处理方法：
 
-* 调用 __inspectClass(...)__ 方法通过反射解析输入的 Class
+* 调用 __inspectClass(...)__ 方法通过反射的方式解析输入的 Class
 
 * 分发给 __ClassGenerationHandler__ 生成成员变量和成员函数
 
@@ -211,9 +211,11 @@ public <type> <getter>() {
 }
 ```
 
+可以看到 service 相关的对象都是通过 getServices().get() 获取的：
 
 
-##### getServices
+
+##### getServices方法
 
 [org.gradle.invocation.DefaultGradle]()
 
@@ -247,7 +249,7 @@ public abstract class DefaultGradle extends AbstractPluginAware implements Gradl
     }
 ```
 
-以上就是一个完整的service调用过程，那么这个service又是在什么时候注册的呢？为什么在源码中找不到任何显式注册该service的地方呢？
+以上就是一个完整的 service 调用过程，那么这个 service 又是在什么时候注册的呢？为什么在源码中找不到任何显式注册该 service 的地方呢？
 
 
 
@@ -273,6 +275,8 @@ public abstract class DefaultGradle extends AbstractPluginAware implements Gradl
     }
 ```
 从源码可以看出，对于 __GradleInternal__ 对象，创建的应是 __GradleScopeServices__：
+
+
 
 ##### DefaultServiceRegistry
 
@@ -308,7 +312,7 @@ public abstract class DefaultGradle extends AbstractPluginAware implements Gradl
 
 __findProviderMethods(...)__ 通过反射的方式解析 class，然后根据 Method 的名称区分类型，将 __decorators__ 和 __factories__ 类型的 Method 封装成 __ServiceProvider__，而 __configurers__ 类型的方法会直接运行。
 
-需要注意的是：如果 __configurers__ 类型的方法有参数，那么这些参数也都是尝试从当前 __ServiceRegistry__ 中创建或者获取。
+需要注意的是：如果 __configurers 或 factories__ 类型的方法有参数，那么这些参数也都是尝试从当前 __ServiceRegistry__ 中创建或者获取。
 
 
 
@@ -347,7 +351,7 @@ __findProviderMethods(...)__ 通过反射的方式解析 class，然后根据 Me
 
 __RelevantMethods__ 这个类是实际负责解析 Class 的类，其中：
 
-* 以 __create__ 和 __decorate__ 开头，同时参数中包含返回值类型的参数 的方法会被解析为__DecoratorMethod__
+* 以 __create__ 和 __decorate__ 开头，同时参数中包含 _返回值类型的参数_ 的方法会被解析为 __DecoratorMethod__
 
 * 以 __create__ 开头的非静态方法会被解析为 __FactoryMethod__
 
