@@ -19,6 +19,14 @@ android.content.res.Resources$NotFoundException: Resource ID #0x78080007
 	at android.view.LayoutInflater.inflate(LayoutInflater.java:374)
 ```
 
+```java
+java stacktrace:
+android.content.res.Resources$NotFoundException: Resource ID #0x0
+	at android.content.res.Resources.getValue(Resources.java:1351)
+	at android.content.res.Resources.getDrawable(Resources.java:804)
+	at android.content.res.Resources.getDrawable(Resources.java:771)
+```
+
 在小米 5.0 和 6.0 的设备上，经常会出现 插件资源找不到的问题 或者 插件资源错乱的问题 以及 WebView 资源异常的问题，异常信息如上：
 
 #### 日志分析
@@ -44,6 +52,11 @@ android.content.res.Resources$NotFoundException: Resource ID #0x78080007
 	8874  8874 W ResourceType: ResTable_typeSpec entry count inconsistent: given 47, previously 5
 	8874  8874 W ResourceType: ResTable_typeSpec entry count inconsistent: given 1, previously 1850
 ```
+
+```java
+11-04 13:43:05.406  8874  8874 W ResourceType: Requesting resource 0x78080007 failed because it is complex
+```
+
 同时，也发现在出现异常的日志中，经常伴有 ResourceType 的异常日志信息，虽然这些信息不会直接导致 crash，但是也可以看出应该跟 Android 系统底层资源加载有关系。
 
 #### 源码
@@ -100,7 +113,17 @@ status_t ResTable::parsePackage(const ResTable_package* const pkg,
 
 经过猜想和验证发现，小米 5.0 和 6.0 的设备，动态 PackageId 的分配与 Android 原生的系统逻辑并不一致，其动态 PackageId 为上一个加载资源的 PackageId 上加 1，比如：先加载了插件 plugin，它的 PackageId 为 0x20，然后再去加载 WebView.apk，则此时分配给 WebView 的 PackageId 为 0x21。
 
-这样的话，如果存在多个插件，他们的 PackageId 是连续，那么就存在一种可能：在某些场景下，动态分配给WebView 的 PackageId 与插件的 PackageId 是一样的，这样就会出现资源混乱的情况，也就会出现上文提到的各种异常。
+这样的话，如果存在多个插件，他们的 PackageId 是连续，那么就存在一种可能：在某些场景下，动态分配给WebView 的 PackageId 与插件的 PackageId 是一样的，这样就会出现资源混乱的情况，也就会出现上文提到的各种异常:
+
+* 【Package not found: com.google.android.webview】: 先加载了插件资源，再加载WebView资源，这两个资源PackageId一样，则底层Map存的是插件资源的映射信息（PackageId <=> PackageName）
+
+* 【资源加载错乱】：由于插件与WebView的PackageId一样，而WebView中存在比插件更加匹配的(适配)资源，因此加载了错误的资源(资源适配机制)
+
+* 【Resources$NotFoundException: Resource ID #0x0】：由于资源加载错乱，导致使用了WebView的资源，对于一些自定义属性(styleable)则存在解析不到的情况
+
+* 【NotFoundException: Resource ID #0x78080007】：资源加载错乱问题，普通资源加载了复合(style)资源
+
+具体与Android系统资源加载和解析过程(主要是适配逻辑)有关，详细可参考 [Android资源加载过程浅析](https://juejin.im/post/6870905216213417992)。
 
 #### 总结
 
