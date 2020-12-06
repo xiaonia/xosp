@@ -2,13 +2,15 @@
 
 #### 相关链接
 
+[improvements](https://source.android.com/devices/tech/dalvik/improvements#inline-caches-in-oat-files)
+
 [jit-compiler](https://source.android.com/devices/tech/dalvik/jit-compiler)
 
 [configure](https://source.android.com/devices/tech/dalvik/configure)
 
 [Android运行时ART执行类方法的过程分析](https://blog.csdn.net/Luoshengyang/article/details/40289405)
 
-[Android ART 虚拟机 inline-cache 机制浅析]()
+[Android ART 虚拟机 AOT 和 JIT 内联机制(inline-cache)浅析](https://juejin.cn/post/6901936720904716296)
 
 #### 问题
 

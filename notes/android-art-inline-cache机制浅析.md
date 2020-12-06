@@ -1,14 +1,71 @@
-###  Android ART 虚拟机 inline-cache 机制浅析
+###  Android ART 虚拟机 AOT 和 JIT 内联机制(inline-cache)浅析
 
 
 
-#### inline-cache 简介
+#### inline 简介
 
- inline-cache 和 inline 是不太一样的，inline 就是普通的代码内联方式；而 inline-cache 是为了解决面向对象编程时，由于方法查找和分发存在的耗时，而对方法调用做的一个缓存，避免重复多次的进行查找和分发，详细可参考 [Inline_caching](https://en.wikipedia.org/wiki/Inline_caching)
+在 C 或者 C++ 语言中，有一种 [inline_function](https://en.wikipedia.org/wiki/Inline_function) 函数，顾名思义，inline_function 就是在编译的时候，直接用函数的代码替换函数调用，例如：
+
+函数声明定义：
+
+```c++
+inline void swap(int *m, int *n)
+{
+    int tmp = *m;
+    *m = *n;
+    *n = tmp;
+}
+```
+
+函数调用：
+
+```c++
+swap(&x, &y);
+```
+
+编译之后：
+
+```c++
+int tmp = x;
+x = y;
+y = tmp;
+```
+
+通过代码内联就可以省去一次函数调用，提高代码的执行效率。
 
 
 
-#### ART 虚拟机 inline-cache 的实现方式
+#### inline_caching 简介
+
+[inline_caching](https://en.wikipedia.org/wiki/Inline_caching) 也是一种类似的优化方式，只不过 inline_caching 是专门针对动态类型语言做的优化。动态类型的语言在运行时存在一个方法查找的过程，如果每次调用方法都要进行方法查找，对于代码的运行效率影响还是比较大的，inline_caching 正是为此而生，其基本实现逻辑是：
+
+* 首次调用方法，则进入方法查找的过程，然后将结果缓存到 CallSite。
+
+* 非首次调用方法，则先在 CallSite 里查找是否有匹配的缓存；如果没有再进行方法查找，并再次缓存到 CallSite。
+
+同时，由于无法确定某个类或接口总共会有多少了派生类，因此也不能无限制的缓存所有的情况，需要有一个合适缓存策略，这就是 inline_caching 的四种状态：
+
+* __uninitialized__：已缓存 __0__ 个派生类的查找结果
+
+* __monomorphic__：有且仅缓存 __1__ 个派生类的查找结果
+
+* __polymorphic__：有且缓存 __2个以上，N个之内__ 个派生类的查找结果
+
+* __megamorphic__：缓存 __N(及N个以上)__ 派生类的查找结果
+
+其中 N 为最大缓存限制，超过 N 个则不再缓存查找结果。事实上，Android ART 虚拟机在 AOT 或者 JIT 编译的时候，也仅会针对 __monomorphic__ 和 __polymorphic__ 进行内联，对于 __uninitialized__ 和 __megamorphic__ 均不会进行处理。
+
+
+
+#### ART 虚拟机 inline caching 的实现方式
+
+上文说到，AOT 或 JIT 编译的时候，仅对  __monomorphic__ 和 __polymorphic__ 进行内联，那么是如何进行内联的呢？
+
+* 在解释器解释执行的时候，记录统计方法的执行次数，达到一定次数则标记为 warm-method
+* 记录下 warm-method 内 virtual-method 和 interface-method 方法调用的查找结果，并保存到 profile 文件，一般在 /data/misc/profiles/.. 
+* 在 AOT 或 JIT 编译的时候，通过添加类型检查指令和分支指令，将 Callee(inlined-method) 方法的代码内联(替换)至 Caller(outer-method) 方法
+
+举个栗子：
 
 [Implement polymorphic inlining.](https://android.googlesource.com/platform/art/+/916cc1d504f10a24f43b384e035fdecbe6a74b4c)
 
@@ -26,15 +83,13 @@ If (receiver == Foo) {
 }
 ```
 
-具体实现逻辑可以参考 [inliner.cc](https://android.googlesource.com/platform/art/+/refs/heads/pie-r2-release/compiler/optimizing/inliner.cc) 、[Main.java](https://android.googlesource.com/platform/art/+/refs/heads/master/test/638-checker-inline-caches/src/Main.java) 或下文分析。从源码中可以看出，ART 虚拟机实现 inline-cache 的方式是 __在 dex2oat 编译的时候，通过修改指令的执行逻辑，减少或者避免方法查找的过程__。
-
-另外也可以看到，修改之后的指令逻辑，最后会有一个容错处理，也就是在未匹配到任何类型之后，会执行原来未优化的指令，从而保证代码不会产生异常。
+另外也可以看到，修改之后的指令逻辑，最后有一个容错处理分支，也就是在未匹配到任何类型之后，会执行原来未优化的指令，从而保证代码不会产生异常。
 
 
 
 #### 记录过程
 
-##### 创建ProfilingInfo
+##### 创建 ProfilingInfo
 
 [interpreter.cc](https://android.googlesource.com/platform/art/+/refs/heads/pie-r2-release/runtime/interpreter/interpreter.cc)
 
@@ -120,7 +175,7 @@ void Instrumentation::MethodEnterEventImpl(Thread* thread,
 void Jit::MethodEntered(Thread* thread, ArtMethod* method) {
   Runtime* runtime = Runtime::Current();
   if (UNLIKELY(runtime->UseJitCompilation() && runtime->GetJit()->JitAtFirstUse())) {
-    // 首次调用就启用JIT编译
+    // 首次调用就启用JIT编译，默认该配置为false
     // The compiler requires a ProfilingInfo object.
     ProfilingInfo::Create(thread,
                           method->GetInterfaceMethodIfProxy(kRuntimePointerSize),
@@ -129,6 +184,7 @@ void Jit::MethodEntered(Thread* thread, ArtMethod* method) {
     compile_task.Run(thread);
     return;
   }
+  
   ProfilingInfo* profiling_info = method->GetProfilingInfo(kRuntimePointerSize);
   // Update the entrypoint if the ProfilingInfo has one. The interpreter will call it
   // instead of interpreting the method.
@@ -168,7 +224,7 @@ void Jit::AddSamples(Thread* self, ArtMethod* method, uint16_t count, bool with_
   int32_t starting_count = method->GetCounter();
   if (Jit::ShouldUsePriorityThreadWeight(self)) {
     // 线程权重计算，主线程权重一般为：hot_method_threshold / 20
-    // 也就是说在主线程重复执行某个方法超过 20 次，就会达到阈值
+    // 也就是说在主线程重复执行某个方法超过 20 次，就会达到JIT阈值
     count *= priority_thread_weight_;
   }
   // new_count 为计算上权重之后，目前方法的总执行次数
@@ -202,6 +258,7 @@ void Jit::AddSamples(Thread* self, ArtMethod* method, uint16_t count, bool with_
       if ((new_count >= hot_method_threshold_) &&
           !code_cache_->ContainsPc(method->GetEntryPointFromQuickCompiledCode())) {
         DCHECK(thread_pool_ != nullptr);
+        // 方法执行次数达到hot_method_threshold_
         // 触发JIT编译任务
         thread_pool_->AddTask(self, new JitCompileTask(method, JitCompileTask::kCompile));
       }
@@ -229,7 +286,7 @@ void Jit::AddSamples(Thread* self, ArtMethod* method, uint16_t count, bool with_
 
 ```cpp
 bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocation) {
-  // 记录方法中的 虚方法或者接口方法的调用信息
+  // 记录方法中虚方法或者接口方法的调用信息
   // 后续的 inline-cache 正是针对这些方法做的缓存
   // Walk over the dex instructions of the method and keep track of
   // instructions we are interested in profiling.
@@ -257,11 +314,13 @@ bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocatio
 }
 ```
 
-* 当 ART 虚拟机通过解释器执行代码的时候，在第一次执行方法的时候，即会向 jit 分发 MethodEnter 事件；
+* 当 ART 虚拟机通过解释器执行代码的时候，每一次执行方法的时候，即会向 __jit__ 分发 MethodEnter 事件；
 
-* jit 接收到该事件之后，会计算并保存方法的总执行次数；
+* __jit__ 接收到该事件之后，会计算并保存方法的总执行次数；
 
-* 如果方法的总执行次数达到 warm_method_threshold 就会创建一个 ProfilingInfo 对象，用以缓存方法分发的信息。
+* 如果方法的总执行次数达到 warm_method_threshold 就会创建一个 ProfilingInfo 对象，用以缓存方法分发的信息；
+
+* 如果方法的总执行次数达到 hot_method_threshold，则会触发 JIT 编译任务
 
 ##### 缓存方法调用信息
 
@@ -340,7 +399,7 @@ void Jit::InvokeVirtualOrInterface(ObjPtr<mirror::Object> this_object,
 void ProfilingInfo::AddInvokeInfo(uint32_t dex_pc, mirror::Class* cls) {
   InlineCache* cache = GetInlineCache(dex_pc);
   // 将虚方法或接口方法，实际调用的类信息记录在cache中
-  // 这里为什么只需要记录类信息呢？因为在 dex2oat 的时候，通过这个类就可以找到真正调用的方法信息
+  // 为什么只需要记录类信息呢？因为在 dex2oat 的时候，通过这个类就可以找到真正调用的方法
   for (size_t i = 0; i < InlineCache::kIndividualCacheSize; ++i) {
     mirror::Class* existing = cache->classes_[i].Read<kWithoutReadBarrier>();
     mirror::Class* marked = ReadBarrier::IsMarked(existing);
@@ -370,7 +429,7 @@ void ProfilingInfo::AddInvokeInfo(uint32_t dex_pc, mirror::Class* cls) {
 }
 ```
 
-目标方法内代码执行的时候，如果是虚方法或者接口方法的调用，则将该调用信息记录到 InlineCache 中，主要是记录 receiver 的类型。
+目标方法内代码指令执行的时候，如果是虚方法或者接口方法的调用，则将该调用信息记录到 InlineCache 中，主要是记录 receiver 的类型，也就是实际调用时派生类的信息。在 AOT 或 JIT 编译的时候，通过该派生类就可以找到真正调用的方法，同时也会根据该派生类信息生成类型检查指令。
 
 ##### 保存profile文件
 
@@ -412,7 +471,9 @@ bool ProfileCompilationInfo::Save(int fd) {
 }
 ```
 
-profile文件保存的过程，此处不再深入，感兴趣的同学可以自行阅读相关源码。
+profile 文件保存的过程，此处不再深入，主要是保存 dex、method 和 class 的简略信息，AOT 编译时会通过读取该文件获取热代码的信息，感兴趣的同学可以自行阅读相关源码。
+
+
 
 #### 编译过程
 
@@ -437,6 +498,7 @@ bool HInliner::TryInline(HInvoke* invoke_instruction) {
     return false;
   }
   ArtMethod* actual_method = nullptr;
+  // 尝试确认是否是编译时可以确定的方法
   if (invoke_instruction->IsInvokeStaticOrDirect()) {
     actual_method = resolved_method;
   } else {
@@ -452,8 +514,9 @@ bool HInliner::TryInline(HInvoke* invoke_instruction) {
       LOG_NOTE() << "Try CHA-based inlining of " << actual_method->PrettyMethod();
     }
   }
+    
+  // 编译时可以确定的方法，比如 final 方法，直接尝试 inline-replace
   if (actual_method != nullptr) {
-    // 是否是编译时可以确定的方法，比如 final 方法，直接尝试 inline-replace
     // Single target.
     bool result = TryInlineAndReplace(invoke_instruction,
                                       actual_method,
@@ -481,6 +544,7 @@ bool HInliner::TryInline(HInvoke* invoke_instruction) {
     return result;
   }
   DCHECK(!invoke_instruction->IsInvokeStaticOrDirect());
+  
   // 编译时无法确定的方法调用，尝试 inline-cache
   // Try using inline caches.
   return TryInlineFromInlineCache(caller_dex_file, invoke_instruction, resolved_method);
@@ -548,6 +612,7 @@ bool HInliner::TryInlineMonomorphicCall(HInvoke* invoke_instruction,
                                         Handle<mirror::ObjectArray<mirror::Class>> classes) {
   DCHECK(invoke_instruction->IsInvokeVirtual() || invoke_instruction->IsInvokeInterface())
       << invoke_instruction->DebugName();
+    
   // 解析class_index
   dex::TypeIndex class_index = FindClassIndexIn(
       GetMonomorphicType(classes), caller_compilation_unit_);
@@ -561,6 +626,7 @@ bool HInliner::TryInlineMonomorphicCall(HInvoke* invoke_instruction,
   ClassLinker* class_linker = caller_compilation_unit_.GetClassLinker();
   PointerSize pointer_size = class_linker->GetImagePointerSize();
   Handle<mirror::Class> monomorphic_type = handles_->NewHandle(GetMonomorphicType(classes));
+    
   // 解析实际调用的方法 resolved_method
   resolved_method = ResolveMethodFromInlineCache(
       monomorphic_type, resolved_method, invoke_instruction, pointer_size);
@@ -573,6 +639,7 @@ bool HInliner::TryInlineMonomorphicCall(HInvoke* invoke_instruction,
   HInstruction* receiver = invoke_instruction->InputAt(0);
   HInstruction* cursor = invoke_instruction->GetPrevious();
   HBasicBlock* bb_cursor = invoke_instruction->GetBlock();
+    
   // 修改和替换指令
   if (!TryInlineAndReplace(invoke_instruction,
                            resolved_method,
@@ -581,7 +648,8 @@ bool HInliner::TryInlineMonomorphicCall(HInvoke* invoke_instruction,
                            /* cha_devirtualize */ false)) {
     return false;
   }
-  // 添加类型检查指令
+  
+  // 添加class检查分支
   // We successfully inlined, now add a guard.
   AddTypeGuard(receiver,
                cursor,
@@ -612,7 +680,7 @@ HInstruction* HInliner::AddTypeGuard(HInstruction* receiver,
                                      HInstruction* invoke_instruction,
                                      bool with_deoptimization) {
   ClassLinker* class_linker = caller_compilation_unit_.GetClassLinker();
-  // 添加类解析指令
+  // 添加class解析指令，即 receiver.getClass() f方法 
   HInstanceFieldGet* receiver_class = BuildGetReceiverClass(
       class_linker, receiver, invoke_instruction->GetDexPc());
   if (cursor != nullptr) {
@@ -631,10 +699,11 @@ HInstruction* HInliner::AddTypeGuard(HInstruction* receiver,
   } else {
     is_referrer = klass.Get() == outermost_art_method->GetDeclaringClass();
   }
+  
+  // 添加class加载指令
   // Note that we will just compare the classes, so we don't need Java semantics access checks.
   // Note that the type index and the dex file are relative to the method this type guard is
   // inlined into.
-  // 添加类加载指令
   HLoadClass* load_class = new (graph_->GetAllocator()) HLoadClass(graph_->GetCurrentMethod(),
                                                                    class_index,
                                                                    caller_dex_file,
@@ -642,6 +711,7 @@ HInstruction* HInliner::AddTypeGuard(HInstruction* receiver,
                                                                    is_referrer,
                                                                    invoke_instruction->GetDexPc(),
                                                                    /* needs_access_check */ false);
+  // LoadKind 应为 KBssEntry
   HLoadClass::LoadKind kind = HSharpening::ComputeLoadClassKind(
       load_class, codegen_, compiler_driver_, caller_compilation_unit_);
   DCHECK(kind != HLoadClass::LoadKind::kInvalid)
@@ -656,11 +726,13 @@ HInstruction* HInliner::AddTypeGuard(HInstruction* receiver,
     DCHECK(Runtime::Current()->IsAotCompiler());
     load_class->CopyEnvironmentFrom(invoke_instruction->GetEnvironment());
   }
-  // 添加比较检查指令
+    
+  // 添加class比较检查指令
   HNotEqual* compare = new (graph_->GetAllocator()) HNotEqual(load_class, receiver_class);
   bb_cursor->InsertInstructionAfter(compare, load_class);
+  
   if (with_deoptimization) {
-    // 添加Deoptimize指令
+    // 添加Deoptimize指令，当前置的内联分支未匹配到的时候，则会调用到该指令，作为最后的容错处理
     HDeoptimize* deoptimize = new (graph_->GetAllocator()) HDeoptimize(
         graph_->GetAllocator(),
         compare,
@@ -693,15 +765,73 @@ class HLoadClass FINAL : public HInstruction {
 [code_generator_x86_64.cc](https://android.googlesource.com/platform/art/+/refs/heads/pie-r2-release/compiler/optimizing/code_generator_x86_64.cc)
 
 ```cpp
-// NO_THREAD_SAFETY_ANALYSIS as we manipulate handles whose internal object we know does not
-// move.
 void InstructionCodeGeneratorX86_64::VisitLoadClass(HLoadClass* cls) NO_THREAD_SAFETY_ANALYSIS {
   HLoadClass::LoadKind load_kind = cls->GetLoadKind();
   if (load_kind == HLoadClass::LoadKind::kRuntimeCall) {
+    // 调用 kQuickInitializeType 方法
     codegen_->GenerateLoadClassRuntimeCall(cls);
     return;
   }
-  ......
+  
+  DCHECK(!cls->NeedsAccessCheck());
+  LocationSummary* locations = cls->GetLocations();
+  Location out_loc = locations->Out();
+  CpuRegister out = out_loc.AsRegister<CpuRegister>();
+  const ReadBarrierOption read_barrier_option = cls->IsInBootImage()
+      ? kWithoutReadBarrier
+      : kCompilerReadBarrierOption;
+  bool generate_null_check = false;
+  switch (load_kind) {
+    case HLoadClass::LoadKind::kReferrersClass: {
+      ......
+      break;
+    }
+    case HLoadClass::LoadKind::kBootImageLinkTimePcRelative:
+      ......
+      break;
+    case HLoadClass::LoadKind::kBootImageAddress: {
+      ......
+      break;
+    }
+    case HLoadClass::LoadKind::kBootImageClassTable: {
+      ......
+      break;
+    }
+    case HLoadClass::LoadKind::kBssEntry: {
+      // 先尝试从 .bss 中加载，对于 AOT 或 JIT 内联场景下的 HLoadClass 指令，应为此项
+      Address address = Address::Absolute(CodeGeneratorX86_64::kDummy32BitOffset,
+                                          /* no_rip */ false);
+      Label* fixup_label = codegen_->NewTypeBssEntryPatch(cls);
+      // /* GcRoot<mirror::Class> */ out = *address  /* PC-relative */
+      GenerateGcRootFieldLoad(cls, out_loc, address, fixup_label, read_barrier_option);
+      generate_null_check = true;
+      break;
+    }
+    case HLoadClass::LoadKind::kJitTableAddress: {
+      ......
+      break;
+    }
+    default:
+      LOG(FATAL) << "Unexpected load kind: " << cls->GetLoadKind();
+      UNREACHABLE();
+  }
+  
+  if (generate_null_check || cls->MustGenerateClinitCheck()) {
+    DCHECK(cls->CanCallRuntime());
+    // 先尝试从 .bss 中加载，若为 null 则调用 kQuickInitializeType 方法
+    SlowPathCode* slow_path = new (codegen_->GetScopedAllocator()) LoadClassSlowPathX86_64(
+        cls, cls, cls->GetDexPc(), cls->MustGenerateClinitCheck());
+    codegen_->AddSlowPath(slow_path);
+    if (generate_null_check) {
+      __ testl(out, out);
+      __ j(kEqual, slow_path->GetEntryLabel());
+    }
+    if (cls->MustGenerateClinitCheck()) {
+      GenerateClassInitializationCheck(slow_path, out);
+    } else {
+      __ Bind(slow_path->GetExitLabel());
+    }
+  }
 }
 ```
 
@@ -719,18 +849,38 @@ void CodeGenerator::GenerateLoadClassRuntimeCall(HLoadClass* cls) {
     CheckEntrypointTypes<kQuickInitializeStaticStorage, void*, uint32_t>();
     InvokeRuntime(kQuickInitializeStaticStorage, cls, cls->GetDexPc());
   } else {
-    // 类加载指定最后编译的代码会编译成调用 art_quick_initialize_type 即对应于 artInitializeTypeFromCode 方法
+    // 类加载指令最后编译的代码会编译成调用 art_quick_initialize_type 即对应于 artInitializeTypeFromCode 方法
     CheckEntrypointTypes<kQuickInitializeType, void*, uint32_t>();
     InvokeRuntime(kQuickInitializeType, cls, cls->GetDexPc());
   }
 }
 ```
 
-从上面的源码可以清楚的看到，Android ART 虚拟机存在两种内联方式：
+从上面的源码可以看到，Android ART 虚拟机在编译时存在两种内联方式：
 
-* inline-replace：即将 Callee 方法(inlined-method)内的代码内联至 Caller 方法(outer-method)中，替换掉原来对 Callee 方法的调用指令
+* __inline__：即将 Callee 方法(inlined-method)内的代码内联至 Caller 方法(outer-method)中，替换掉原来对 Callee 方法的调用指令
 
-* inline-cache：即在分析热代码方法分发信息的基础上，通过添加类型检查和分支指令，直接将该方法的代码内联，从而省略方法查找和调用的过程
+* __inline-cache__：即在分析热代码方法分发信息的基础上，通过添加类型检查和分支指令，直接将该方法的代码内联，从而省略方法查找和调用的过程
+
+编译之后的指令，可以参考官方测试用例 [Main.java](https://android.googlesource.com/platform/art/+/refs/heads/master/test/638-checker-inline-caches/src/Main.java)
+
+```java
+  /// CHECK-START: int Main.inlineMonomorphicSubA(Super) inliner (before)
+  /// CHECK:       InvokeVirtual method_name:Super.getValue
+  /// CHECK-START: int Main.inlineMonomorphicSubA(Super) inliner (after)
+  /// CHECK:  <<SubARet:i\d+>>      IntConstant 42
+  /// CHECK:  <<Obj:l\d+>>          NullCheck
+  /// CHECK:  <<ObjClass:l\d+>>     InstanceFieldGet [<<Obj>>] field_name:java.lang.Object.shadow$_klass_
+  /// CHECK:  <<InlineClass:l\d+>>  LoadClass class_name:SubA
+  /// CHECK:  <<Test:z\d+>>         NotEqual [<<InlineClass>>,<<ObjClass>>]
+  /// CHECK:  <<DefaultRet:i\d+>>   InvokeVirtual [<<Obj>>] method_name:Super.getValue
+  /// CHECK:  <<Ret:i\d+>>          Phi [<<SubARet>>,<<DefaultRet>>]
+  /// CHECK:                        Return [<<Ret>>]
+  /// CHECK-NOT:                    Deoptimize
+  public static int inlineMonomorphicSubA(Super a) {
+    return a.getValue();
+  }
+```
 
 
 
@@ -755,6 +905,7 @@ extern "C" mirror::Class* artInitializeTypeFromCode(uint32_t type_idx, Thread* s
                                                         /* can_run_clinit */ false,
                                                         /* verify_access */ false);
   if (LIKELY(result != nullptr) && CanReferenceBss(caller_and_outer.outer_method, caller)) {
+    // 将 result 缓存到 .bss 中
     StoreTypeInBss(caller_and_outer.outer_method, dex::TypeIndex(type_idx), result);
   }
   return result.Ptr();
@@ -769,9 +920,11 @@ CallerAndOuterMethod GetCalleeSaveMethodCallerAndOuterMethod(Thread* self, Calle
   CallerAndOuterMethod result;
   ScopedAssertNoThreadSuspension ants(__FUNCTION__);
   ArtMethod** sp = self->GetManagedStack()->GetTopQuickFrameKnownNotTagged();
+  // 解析 outer-method
   auto outer_caller_and_pc = DoGetCalleeSaveMethodOuterCallerAndPc(sp, type);
   result.outer_method = outer_caller_and_pc.first;
   uintptr_t caller_pc = outer_caller_and_pc.second;
+  // 解析 inlined-method
   result.caller =
       DoGetCalleeSaveMethodCaller(result.outer_method, caller_pc, /* do_caller_check */ true);
   return result;
@@ -797,6 +950,7 @@ static inline ArtMethod* DoGetCalleeSaveMethodCaller(ArtMethod* outer_method,
       DCHECK(stack_map.IsValid());
       if (stack_map.HasInlineInfo(encoding.stack_map.encoding)) {
         InlineInfo inline_info = code_info.GetInlineInfoOf(stack_map, encoding);
+        // 从 inline_info 中解析 inlined-method，此时该方法的代码已经被内联，且也没有此方法的栈帧
         caller = GetResolvedMethod(outer_method,
                                    method_info,
                                    inline_info,
@@ -838,14 +992,18 @@ inline ArtMethod* GetResolvedMethod(ArtMethod* outer_method,
   ScopedAssertNoThreadSuspension sants(__FUNCTION__);
   if (inline_info.EncodesArtMethodAtDepth(encoding, inlining_depth)) {
     return inline_info.GetArtMethodAtDepth(encoding, inlining_depth);
-  }
+  } 
   uint32_t method_index = inline_info.GetMethodIndexAtDepth(encoding, method_info, inlining_depth);
+  
+  // 特殊处理 String.charAt() 方法
   if (inline_info.GetDexPcAtDepth(encoding, inlining_depth) == static_cast<uint32_t>(-1)) {
     // "charAt" special case. It is the only non-leaf method we inline across dex files.
     ArtMethod* inlined_method = jni::DecodeArtMethod(WellKnownClasses::java_lang_String_charAt);
     DCHECK_EQ(inlined_method->GetDexMethodIndex(), method_index);
     return inlined_method;
   }
+  
+  // 遍历解析 inlined-method
   // Find which method did the call in the inlining hierarchy.
   ClassLinker* class_linker = Runtime::Current()->GetClassLinker();
   ArtMethod* method = outer_method;
@@ -863,6 +1021,7 @@ inline ArtMethod* GetResolvedMethod(ArtMethod* outer_method,
       UNREACHABLE();
     }
     DCHECK(!inlined_method->IsRuntimeMethod());
+    
     // 检查 outer_method 和 inlined_method 是否在同一个 dex 中
     if (UNLIKELY(inlined_method->GetDexFile() != method->GetDexFile())) {
       // TODO: We could permit inlining within a multi-dex oat file and the boot image,
@@ -884,11 +1043,11 @@ inline ArtMethod* GetResolvedMethod(ArtMethod* outer_method,
   return method;
 }
 ```
-实际上，HLoadClass 指令最后会编译并调用 art_quick_initialize_type 方法，这个方法就是 artInitializeTypeFromCode(...) 方法，artInitializeTypeFromCode(...) 方法则会触发类加载及初始化逻辑。
+实际上，__HLoadClass__ 指令最后会编译并调用 art_quick_initialize_type 方法，这个方法就是 __artInitializeTypeFromCode(...)__ 方法，artInitializeTypeFromCode(...) 方法则会触发类加载及初始化逻辑。
 
 同时，我们也看到由于内联之后，可能调用 Caller 方法(inlined_method)的指令已经被 Caller 方法(inlined_method)中的指令所替代，因此需要调用 GetCalleeSaveMethodCallerAndOuterMethod 方法，从方法栈帧和代码信息中解析出 Caller 方法(inlined_method)的信息。
 
-也正是在这个过程中，存在一个检查 inlined_method 和 outer_method 是否在同一个 dex 中的逻辑，如果不在同一个dex中，则输出 “ Inlined method resolution crossed dex file boundary ” 信息。
+也正是在这个过程中，存在一个检查 inlined_method 和 outer_method 是否在同一个 dex 中的逻辑，如果不在同一个dex中，则输出 “ __Inlined method resolution crossed dex file boundary__ ” 信息。
 
 
 
