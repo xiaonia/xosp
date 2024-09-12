@@ -71,8 +71,11 @@
       0x001334d0: d1400bf0	sub x16, sp, #0x2000 (8192) // doOverflowCheck
       0x001334d4: b940021f	ldr wzr, [x16]
       // SaveLiveRegisters
+      // 将 x0 写入 [sp - 48] 即 栈顶，并将 sp - 48 写入 sp 即分配栈空间
+      // 这里 x0 保存的是当前调用的 ArtMethod，栈回溯的时候利用的就是这个值
       0x001334d8: f81d0fe0	str x0, [sp, #-48]!
       0x001334dc: f9000ff5	str x21, [sp, #24]
+      // 这里将 LR 也保存到栈里，函数返回的时候亦是从此恢复
       0x001334e0: a9027bf6	stp x22, lr, [sp, #32]
       // GenerateSuspendCheck
       0x001334e4: 79400270	ldrh w16, [tr] ; state_and_flags
@@ -88,6 +91,7 @@
       0x00133500: d28009d1	mov x17, #0x4e // saveMethodIndexByConstant
       0x00133504: b9400020	ldr w0, [x1] // getClassFromObjectByOffset
       0x00133508: f9404000	ldr x0, [x0, #128] // getImTableByOffset
+      // 注意到这里 x0 保存的是要调用的 ArtMethod
       0x0013350c: f9408c00	ldr x0, [x0, #280] // getArtMethodByOffset
       0x00133510: f940101e	ldr lr, [x0, #32] // getStubMethodByOffset
       0x00133514: d63f03c0	blr lr
@@ -107,6 +111,7 @@
       0x001335ec: f9400ff5	ldr x21, [sp, #24]
       0x001335f0: a9427bf6	ldp x22, lr, [sp, #32]
       // GenerateFrameExit
+      // 回收栈帧
       0x001335f4: 9100c3ff	add sp, sp, #0x30 (48)
       0x001335f8: d65f03c0	ret
       
